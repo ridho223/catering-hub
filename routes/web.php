@@ -8,4 +8,4 @@ Route::get('/', [HomeController::class,'index'] );
 Route::get('/about', [HomeController::class,'about'] );
 Route::get('/contact', [HomeController::class,'contact'] );
 
-Route::get('/categories', [CategoryController::class,'index'] );
+Route::resource('categories', CategoryController::class );
