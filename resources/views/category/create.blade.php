@@ -6,7 +6,7 @@
 
     <div class="container py-5">
 
-        <div class="card shadow-sm">
+        <div class="card shadow-sm rounded-4">
             <div class="card-header bg-success text-white">
                 Tambah Kategori
             </div>
@@ -19,7 +19,7 @@
                         <label class="form-label">Nama Kategori</label>
 
                         <input type="text" name="name" 
-                                class="form-control @error('name') is-invalid @enderror"
+                                class="form-control rounded-3 @error('name') is-invalid @enderror"
                                 value="{{old('name')}}">
 
                         @error('name')
@@ -33,7 +33,7 @@
                             <label class="form-label">Deskripsi</label>
 
                             <textarea name="description"
-                                      class="form-control @error('description') is-invalid @enderror"
+                                      class="form-control rounded-3 @error('description') is-invalid @enderror"
                                       placeholder="Masukan deskripsi kategori..."
                                       style="height=:120px; resize:none;">
                                     {{old('description')}}
@@ -41,7 +41,7 @@
 
                         </div>
 
-                        <button class="btn btn-success">
+                        <button class="btn btn-success rounded-pill">
                             Simpan
                         </button>
 

@@ -1,4 +1,4 @@
-  <nav class="navbar navbar-expand-lg navbar-dark bg-success shadow">
+  <nav class="navbar navbar-expand bg-white shadow-sm px-4 py-3">
 
     <div class="container">
 
@@ -22,6 +22,12 @@
                 </li>
                 <li class="nav-item">
                     <a class="nav-link" href="/menu">Menu</a>
+                </li>
+                <li class="nav-item">
+                    <a href="{{route('cart.index')}}" class="nav-link">
+                        <i class="bi bi-cart3"></i>
+                        Keranjang
+                    </a>
                 </li>
                 <li class="nav-item">
                     <a class="nav-link" href="/about">Tentang</a>

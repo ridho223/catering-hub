@@ -4,7 +4,7 @@
   
     <div class="container py-5">
 
-        <div class="card shadow-sm">
+        <div class="card shadow-sm rounded-4">
 
             <div class="card-header bg-warning">
                 Edit Kategori
@@ -20,7 +20,7 @@
 
                         <label>Nama</label>
 
-                        <input type="text" name="name" class="form-control"
+                        <input type="text" name="name" class="form-control rounded-3"
                                 value="{{old('name',$category->name)}}">
                     </div>
 
@@ -28,14 +28,14 @@
 
                         <label>Deskripsi</label>
 
-                        <textarea name="description" class="form-control" style="height:120px;">
+                        <textarea name="description" class="form-control rounded-3" style="height:120px;">
                             {{old('description',$category-description)}}
                         </textarea>
 
                     </div>
 
-                    <button class="btn btn-warning">
-                        Update
+                    <button class="btn btn-warning rounded-pill">
+                        <i class="bi bi-pencil-square">Update</i>
                     </button>
 
                     <a href="{{route('categories.index')}}" class="btn btn-secondary">

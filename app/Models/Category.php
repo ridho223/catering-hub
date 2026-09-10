@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
+use App\Models\Menu;
 
 class Category extends Model
 {
@@ -11,4 +12,12 @@ class Category extends Model
         'name',
         'description',      
     ];
+
+    public function menus()
+{
+    return $this->hasMany(Menu::class);
 }
+
+}
+
+

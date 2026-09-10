@@ -1,11 +1,11 @@
-@extends('layouts.app')
+@extends('layouts.admin')
 @section('title','Kategori')
 @section('content')
 
-    <div class="container py-5">
-        @if (@session('success'))
+    <div>
+        @if(@session('success'))
             
-            <div class="alert alert-success alert-dismissible fade-show">
+            <div class="alert alert-success alert-dismissible fade show">
                 {{session('success')}}
 
                 <button class="btn-close" data-bs-dismiss="alert"></button>
@@ -13,20 +13,21 @@
             
         @endif
 
-      <div class="card shadow-sm border-0">
+      <div class="card shadow-sm border-0 rounded-4">
         
         <div class=" card-header bg-success text-white d-flex justify-content-between align-items-center">
 
             <h5 class="mb-0">Data Kategori</h5>
 
             <a href="{{route('categories.create')}}" class="btn btn-light btn-sm">
-                + Tambah Kategori    
+              <i class="bi bi-plus-circle"></i>
+              Tambah Kategori   
             </a>
         </div>
 
         <div class="card-body">
 
-         <table class="table table-hover align-middle mb-0">
+         <table id="datatable" class="table table-hover align-middle">
             
             <thead class="table-success">
 
@@ -52,14 +53,16 @@
                             <div class="d-flex justify-content-center gap-2">
                             <a href="{{route('categories.edit',$category->id)}}" 
                                 class="btn btn-warning btn-sm">
-                                <i class="bi bi-pencil-square">Edit</i>
+                                <i class="bi bi-pencil-square me-1"></i>
+                                Edit
                             </a>
 
                             <form action="{{route('categories.destroy',$category->id)}}"
                                 method="POST" class="d-inline">
                                 @csrf @method('DELETE')
-                                <button class="btn btn-danger btn-sm">
-                                    <i class="bi bi-trash3-fill">Hapus</i>
+                                <button class="btn btn-danger btn-sm btn-delete">
+                                    <i class="bi bi-trash3-fill me-1"></i>
+                                    Hapus
                                 </button>
                             </form>
                             </div>
@@ -70,7 +73,7 @@
                 @empty
                     <tr>
 
-                        <td colspan="3" class="text-center">
+                        <td colspan="4" class="text-center">
                             Belum Ada Data
                         </td>
 
