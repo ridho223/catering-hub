@@ -7,12 +7,23 @@ use Illuminate\Database\Eloquent\Model;
 class Order extends Model
 {
     protected $fillable = [
+        'order_code',
+        'tracking_token',
         'customer_id',
+        'order_type',
         'order_date',
         'delivery_date',
+        'delivery_method',
+        'delivery_fee',
+        'delivery_distance',
         'status',
         'total',
-        'notes'
+        'notes',    
+    ];
+
+    protected $casts = [
+        'delivery_fee' => 'decimal:2',
+        'delivery_distance' => 'decimal:2',
     ];
 
     public function customer()
@@ -23,5 +34,20 @@ class Order extends Model
     public function details()
     {
         return $this->hasMany(OrderDetail::class);
+    }
+
+    public function packages()
+    {
+        return $this->hasMany(OrderPackage::class);
+    }
+
+    public function customRequest()
+    {
+        return $this->hasOne(CustomerRequest::class, 'order_id');
+    }
+    
+    public function payment()
+    {
+        return $this->hasOne(Payment::class);
     }
 }

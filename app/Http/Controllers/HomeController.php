@@ -3,17 +3,18 @@
 namespace App\Http\Controllers;
 
 use App\Models\Menu;
+use App\Models\Package;
 use Illuminate\Http\Request;
 
 class HomeController extends Controller
 {
     public function index()
     {
-        $menus = Menu::where('status', 'Tersedia')
-            ->where('stock', '>', 0)
-            ->orderBy('name')->get();
+        $package = Package::where('status', 'Tersedia')            
+            ->latest()
+            ->get();
 
-        return view('home.index', compact('menus'));
+        return view('home.index', compact('package'));
     }
 
     public function about()

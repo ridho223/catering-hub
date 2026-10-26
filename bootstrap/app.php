@@ -7,19 +7,36 @@ use Illuminate\Http\Request;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
-        web: __DIR__.'/../routes/web.php',
-        commands: __DIR__.'/../routes/console.php',
+        web: __DIR__ . '/../routes/web.php',
+        commands: __DIR__ . '/../routes/console.php',
         health: '/up',
     )
-    ->withMiddleware(function (Middleware $middleware): void {
-        $middleware->redirectGuestsTo('/');
+        ->withMiddleware(function (Middleware $middleware): void {
 
-        $middleware->alias([
-            'superadmin' => \App\Http\Middleware\SuperadminMiddleware::class,
-        ]);
+            $middleware->redirectGuestsTo(function (Request $request) {
+
+                // Halaman yang membutuhkan login customer
+                if (
+                    $request->is('checkout*') ||
+                    $request->is('pesanan-saya*') ||
+                    $request->is('custom-catering*')
+                ) { 
+                    return route('customer.login');
+                }
+
+                // Halaman admin membutuhkan login admin
+                return route('login');
+                });
+
+                $middleware->alias([
+                'superadmin' => \App\Http\Middleware\SuperadminMiddleware::class,
+                ]);                 
     })
     ->withExceptions(function (Exceptions $exceptions): void {
+
         $exceptions->shouldRenderJsonWhen(
             fn (Request $request) => $request->is('api/*'),
         );
-    })->create();
+
+    })
+    ->create();

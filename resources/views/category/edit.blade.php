@@ -1,4 +1,4 @@
-@extends('layouts.app')
+@extends('layouts.admin')
  @section('title','Edit Kategori')
  @section('content')
   
@@ -6,7 +6,7 @@
 
         <div class="card shadow-sm rounded-4">
 
-            <div class="card-header bg-warning">
+            <div class="card-header bg-success text-white">
                 Edit Kategori
             </div>
 
@@ -18,7 +18,7 @@
 
                     <div class="mb-3">
 
-                        <label>Nama</label>
+                        <label class="form-label">Nama</label>
 
                         <input type="text" name="name" class="form-control rounded-3"
                                 value="{{old('name',$category->name)}}">
@@ -26,15 +26,15 @@
 
                     <div class="mb-3">
 
-                        <label>Deskripsi</label>
+                        <label class="form-label">Deskripsi</label>
 
                         <textarea name="description" class="form-control rounded-3" style="height:120px;">
-                            {{old('description',$category-description)}}
+                            {{old('description',$category->description)}}
                         </textarea>
 
                     </div>
 
-                    <button class="btn btn-warning rounded-pill">
+                    <button class="btn btn-success rounded-pill">
                         <i class="bi bi-pencil-square">Update</i>
                     </button>
 

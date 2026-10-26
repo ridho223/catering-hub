@@ -1,47 +1,188 @@
-<div class="sidebar">
+<aside class="sidebar">
 
-    <h3 class="text-white text-center py-4">
-        🍱 Tavi Catering
-    </h3>
+    {{-- BRAND --}}
+    <div class="sidebar-brand">
 
-    <a href="{{route('dashboard')}}" class="{{request()->routeIs('dashboard') ? 'active' : ''}}">
-        <i class="bi bi-speedometer2"></i>
-        Dashboard
-    </a>
+        <a href="{{ route('dashboard') }}" class="brand-link">
 
-    <a href="{{route('categories.index')}}" class="{{request()->routeIs('categories.*') ? 'active' : ''}}">
-        <i class="bi bi-tags"></i>
-        Kategori
-    </a>
+            <div class="brand-icon">
+                🍱
+            </div>
 
-    <a href="{{route('menu.index')}}" class="{{request()->routeIs('menus.*') ? 'active' : ''}}">
-        <i class="bi bi-grid"></i>
-        Menu
-    </a>
+            <div>
+                <div class="brand-name">
+                    KEDAI BANGJO
+                </div>
 
-    <a href="{{route('orders.index')}}" class="{{request()->routeIs('orders.*') ? 'active' : ''}}">
-        <i class="bi bi-cart"></i>
-        Pesanan
-    </a>
+                <small>
+                    Admin Panel
+                </small>
+            </div>
 
-    <a href="{{route('customers.index')}}"
-        class="{{request()->routeIs('customers.*') ? 'active' : ''}}">
+        </a>
 
-        <i class="bi bi-people"></i>
+    </div>
 
-        Customer
-    </a>
 
-    <a href="#">
-        <i class="bi bi-file-earmark-text"></i>
-        Laporan
-    </a>
+    {{-- MENU --}}
+    <div class="sidebar-menu">
 
-    @if (Auth::user()->level === 'Superadmin')        
-    <a href="{{route('users.index')}}">
-        <i class="bi bi-people"></i>
-        User
-    </a>
-    @endif
-    
-</div>
+        {{-- MAIN --}}
+        <div class="sidebar-section">
+            <div class="sidebar-section-title">
+                MAIN
+            </div>
+
+            <a href="{{ route('dashboard') }}"
+               class="sidebar-link {{ request()->routeIs('dashboard') ? 'active' : '' }}">
+
+                <i class="bi bi-grid-1x2-fill"></i>
+
+                <span>Dashboard</span>
+
+            </a>
+        </div>
+
+
+        {{-- KATALOG --}}
+        <div class="sidebar-section">
+
+            <div class="sidebar-section-title">
+                KATALOG
+            </div>
+
+
+            <a href="{{ route('categories.index') }}"
+               class="sidebar-link {{ request()->routeIs('categories.*') ? 'active' : '' }}">
+
+                <i class="bi bi-tags"></i>
+
+                <span>Kategori</span>
+
+            </a>
+
+
+            <a href="{{ route('menu.index') }}"
+               class="sidebar-link {{ request()->routeIs('menu.*') ? 'active' : '' }}">
+
+                <i class="bi bi-grid"></i>
+
+                <span>Menu</span>
+
+            </a>
+
+
+            <a href="{{ route('packages.index') }}"
+               class="sidebar-link {{ request()->routeIs('packages.*') ? 'active' : '' }}">
+
+                <i class="bi bi-box-seam"></i>
+
+                <span>Paket</span>
+
+            </a>
+                            
+            <a href="{{route('admin.custom-requests.index')}}"
+                class="sidebar-link {{request()->routeIs('admin.custom-request.*') ? 'active' : ''}}">
+
+                <i class="bi bi-clipboard-check me-2"></i>
+                Permintaan Custom
+
+            </a>
+
+        </div>
+
+
+        {{-- TRANSAKSI --}}
+        <div class="sidebar-section">
+
+            <div class="sidebar-section-title">
+                TRANSAKSI
+            </div>
+
+
+            <a href="{{ route('orders.index') }}"
+               class="sidebar-link {{ request()->routeIs('orders.*') ? 'active' : '' }}">
+
+                <i class="bi bi-cart3"></i>
+
+                <span>Pesanan</span>
+
+            </a>
+
+
+            <a href="{{ route('customers.index') }}"
+               class="sidebar-link {{ request()->routeIs('customers.*') ? 'active' : '' }}">
+
+                <i class="bi bi-people"></i>
+
+                <span>Customer</span>
+
+            </a>
+
+            <a href="{{route('admin.payments.index')}}" 
+                class="sidebar-link {{request()->routeIs('admin.payments.*') ? 'active' : ''}}">
+
+                <i class="bi bi-credit-card me-2"></i>
+                
+                <span>Pembayaran</span>
+            </a>
+
+        </div>
+
+
+        {{-- LAINNYA --}}
+        <div class="sidebar-section">
+
+            <div class="sidebar-section-title">
+                LAINNYA
+            </div>
+
+
+            <a href="#" class="sidebar-link">
+
+                <i class="bi bi-file-earmark-bar-graph"></i>
+
+                <span>Laporan</span>
+
+            </a>
+
+        </div>
+
+
+        {{-- SISTEM --}}
+        @if (Auth::user()->level === 'Superadmin')
+
+            <div class="sidebar-section">
+
+                <div class="sidebar-section-title">
+                    SISTEM
+                </div>
+
+
+                <a href="{{ route('users.index') }}"
+                   class="sidebar-link {{ request()->routeIs('users.*') ? 'active' : '' }}">
+
+                    <i class="bi bi-person-gear"></i>
+
+                    <span>User</span>
+
+                </a>
+
+            </div>
+
+        @endif
+
+    </div>
+
+
+    {{-- BOTTOM --}}
+    <div class="sidebar-bottom">
+
+        <div class="sidebar-version">
+            <i class="bi bi-shield-check"></i>
+            Admin Panel
+        </div>
+
+    </div>
+
+</aside>

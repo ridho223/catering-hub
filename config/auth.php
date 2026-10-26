@@ -1,6 +1,8 @@
 <?php
 
 use App\Models\User;
+use Illuminate\Support\Facades\App;
+use App\Models\CustomerAccount;
 
 return [
 
@@ -42,6 +44,10 @@ return [
             'driver' => 'session',
             'provider' => 'users',
         ],
+        'customer' => [
+            'driver' => 'session',
+            'provider' => 'customers',
+        ]
     ],
 
     /*
@@ -65,6 +71,11 @@ return [
         'users' => [
             'driver' => 'eloquent',
             'model' => env('AUTH_MODEL', User::class),
+        ],
+
+        'customers' =>[
+            'driver' => 'eloquent',
+            'model' => \App\Models\CustomerAccount::class,
         ],
 
         // 'users' => [

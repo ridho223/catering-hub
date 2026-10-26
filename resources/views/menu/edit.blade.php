@@ -1,4 +1,4 @@
-@extends('layouts.app')
+@extends('layouts.admin')
  @section('title','Tambah Menu')
  @section('content')
     
@@ -118,16 +118,19 @@
 
                 <div class="d-flex justify-content-end gap-2 mt-4">
                 
+
+                    
+                    <a href="{{route('menu.index')}}" class="btn btn-secondary rounded-pill px-4">
+                        <i class="bi bi-arrow-left"></i>
+                        Kembali
+                    </a>
+
+
                     <button type="submit" class="btn btn-success rounded-pill px-4">
                         <i class="bi bi-check-circle me-1">
                             Update
                         </i>
                     </button>
-
-                    <a href="{{route('menu.index')}}" class="btn btn-secondary rounded-pill px-4">
-                        <i class="bi bi-arrow-left"></i>
-                        Kembali
-                    </a>
 
                 </div>
 

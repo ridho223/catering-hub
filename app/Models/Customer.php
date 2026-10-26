@@ -17,4 +17,14 @@ class Customer extends Model
     {
         return $this->hasMany(Order::class);
     }
+
+    public function account()
+    {
+        return $this->hasOne(CustomerAccount::class);
+    }
+
+    public function customRequest()
+    {
+        return $this->hasMany(CustomerRequest::class);
+    }
 }

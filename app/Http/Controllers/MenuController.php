@@ -12,10 +12,54 @@ class MenuController extends Controller
     /**
      * Display a listing of the resource.
      */
-    public function index()
+    public function index(Request $request)
     {
-        $menus = Menu::with('category')->latest()->get();
-        return view('menu.index', compact('menus'));
+        $query = Menu::with('category');
+
+            // Cari berdasarkan nama atau deskripsi
+            if ($request->filled('search')) {
+                $search = $request->search;
+
+                $query->where(function ($q) use ($search) {
+                    $q->where('name', 'like', '%' . $search . '%')
+                    ->orWhere('description', 'like', '%' . $search . '%');
+                });
+            }
+
+            // Filter kategori
+            if ($request->filled('category')) {
+                $query->where('category_id', $request->category);
+            }
+
+            // Filter status
+            if ($request->filled('status')) {
+                $query->where('status', $request->status);
+            }
+
+            $menus = $query
+                ->orderBy('name')
+                ->paginate(15)
+                ->withQueryString();
+
+            // Kategori untuk dropdown filter
+            $categories = Category::orderBy('name')->get();
+
+            // Statistik seluruh data menu, bukan hanya halaman aktif
+            $availableCount = Menu::where('status', 'Tersedia')
+                ->where('stock', '>', 0)
+                ->count();
+
+            $outOfStockCount = Menu::where(function ($q) {
+                $q->where('stock', '<=', 0)
+                ->orWhere('status', 'Habis');
+            })->count();
+
+            return view('menu.index', compact(
+                'menus',
+                'categories',
+                'availableCount',
+                'outOfStockCount'
+            ));
     }
 
     /**
@@ -33,10 +77,11 @@ class MenuController extends Controller
     public function store(Request $request)
     {
         $request->validate([
-            'category_id'=> 'required',
-            'name'=> 'required',
-            'price'=> 'required',
-            'stock' => 'required',
+            'category_id'=> 'required|exists:categories,id',
+            'name'=> 'required|string|max:255',
+            'price'=> 'required|numeric|min:0',
+            'stock' => 'required|integer|min:0',
+            'status' => 'required|in:Tersedia,Tidak Tersedia',
             'image' => 'nullable|image|mimes:jpg,jpeg,png|max:2048',
         ]);
 
@@ -127,4 +172,6 @@ class MenuController extends Controller
         return back()->with('success','Menu berhasil dihapus');
 
     }
+
+
 }

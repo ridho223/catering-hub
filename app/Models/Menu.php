@@ -23,8 +23,18 @@ class Menu extends Model
         return $this->belongsTo(Category::class);
     }
 
+    public function packageDetail()
+    {
+        return $this->hasMany(PackageDetails::class,'menus_id');
+    }
+
     public function orderDetails()
     {
         return $this->hasMany(OrderDetail::class);
+    }
+
+    public function customerRequestDetail()
+    {
+        return $this->hasMany(CustomerRequestDetail::class);
     }
 }
