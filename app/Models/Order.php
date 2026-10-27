@@ -40,11 +40,6 @@ class Order extends Model
     {
         return $this->hasMany(OrderPackage::class);
     }
-
-    public function customRequest()
-    {
-        return $this->hasOne(CustomerRequest::class, 'order_id');
-    }
     
     public function payment()
     {

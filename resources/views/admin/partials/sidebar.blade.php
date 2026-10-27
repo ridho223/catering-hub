@@ -79,15 +79,7 @@
 
                 <span>Paket</span>
 
-            </a>
-                            
-            <a href="{{route('admin.custom-requests.index')}}"
-                class="sidebar-link {{request()->routeIs('admin.custom-request.*') ? 'active' : ''}}">
-
-                <i class="bi bi-clipboard-check me-2"></i>
-                Permintaan Custom
-
-            </a>
+            </a>                        
 
         </div>
 

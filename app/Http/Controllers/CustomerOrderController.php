@@ -16,8 +16,7 @@ class CustomerOrderController extends Controller
         $orders = $customer->orders()->with([
             'packages.package',
             'details.menu',
-            'payment',
-            'customRequest'
+            'payment',            
         ])->latest()->get();
 
         return view('customer.orders.index', compact('orders'));
@@ -34,9 +33,7 @@ class CustomerOrderController extends Controller
             'customer',
             'packages.package.details.menu',
             'details.menu',
-            'payment',
-            'customRequest.details.menu',        
-            'customRequest.details.replacesMenu',
+            'payment',      
         ])->findOrFail($order);
 
         // Paket catering selalu dihitung.

@@ -23,8 +23,4 @@ class Customer extends Model
         return $this->hasOne(CustomerAccount::class);
     }
 
-    public function customRequest()
-    {
-        return $this->hasMany(CustomerRequest::class);
-    }
 }

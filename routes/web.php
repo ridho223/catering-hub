@@ -8,8 +8,6 @@ use App\Http\Controllers\CheckoutController;
 use App\Http\Controllers\CustomerAuthController;
 use App\Http\Controllers\CustomerController;
 use App\Http\Controllers\CustomerOrderController;
-use App\Http\Controllers\CustomRequestController;
-use App\Http\Controllers\Admin\CustomRequestController as AdminCustomRequestController;
 use App\Http\Controllers\Admin\PaymentController as AdminPaymentController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\MenuController;
@@ -59,17 +57,6 @@ Route::middleware('auth:customer')->group(function(){
     Route::post('/pesanan-saya/{order}/pembayaran', [PaymentController::class,'store'])->name('customer.payment.store');
     Route::get('/pesanan-saya/{order}', [CustomerOrderController::class,'show'])->name('customer.orders.show');
 
-
-    Route::get('/custom-catering', [CustomRequestController ::class,'create'])->name('customer.custom.create');
-    Route::post('/custom-catering', [CustomRequestController::class,'store'])->name('customer.custom.store');
-    Route::get('/custom-catering/saya', [CustomRequestController::class,'index'])->name('customer.custom.index');
-    Route::get('/custom-catering/{customerRequest}', [CustomRequestController::class,'show'])->name('customer.custom.show');
-    Route::get('/custom-catering/{id}/edit', [CustomRequestController::class,'edit'])->name('customer.custom.edit');
-    Route::put('/custom-catering/{id}', [CustomRequestController::class,'update'])->name('customer.custom.update');
-    Route::delete('/custom-catering/{id}', [CustomRequestController::class,'destroy'])->name('customer.custom.destroy');
-    Route::post('/custom-catering/{id}/approve', [CustomRequestController::class, 'approve'])->name('customer.custom.approve');
-    Route::post('/custom-catering/{id}/reject', [CustomRequestController::class, 'reject'])->name('customer.custom.reject');
-
 });
  
 
@@ -88,11 +75,7 @@ Route::middleware('auth')->prefix('admin')->group(function(){
     Route::put('/profile',[AuthController::class,'UpdateProfile'])->name('admin.profile.update');
     Route::get('/profile/password',[AuthController::class,'editPassword'])->name('admin.password.edit');
     Route::put('/profile/password',[AuthController::class,'updatePassword'])->name('admin.password.update');
-    
-    Route::get('/custom-requests', [AdminCustomRequestController::class,'index'])->name('admin.custom-requests.index');
-    Route::get('/custom-requests/{id}', [AdminCustomRequestController::class,'show'])->name('admin.custom-requests.show');
-    Route::get('/custom-requests/{id}/edit', [AdminCustomRequestController::class,'edit'])->name('admin.custom-requests.edit');
-    Route::put('/custom-requests/{id}', [AdminCustomRequestController::class,'update'])->name('admin.custom-requests.update');
+        
     Route::get('/payments', [AdminPaymentController::class,'index'])->name('admin.payments.index');
     Route::get('/payments/{id}', [AdminPaymentController::class,'show'])->name('admin.payments.show');
     Route::post('/payments/{id}/verify', [AdminPaymentController::class,'verify'])->name('admin.payments.verify');

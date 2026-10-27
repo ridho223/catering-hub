@@ -27,29 +27,12 @@
                     </a>
                 </li>
 
-                {{-- <li class="nav-item">
-                    <a class="nav-link {{request()->RouteIs('menu.*') ? 'active' : ''}}" href="{{route('menu.public')}}">
-                        <i class="bi bi-grid me-1"></i>
-                        Menu
-                    </a>
-                </li> --}}
 
                 <li class="nav-item">
                     <a class="nav-link {{request()->routeIs('customer.packages.*') ? 'active' : ''}}" href="{{route('customer.packages.index')}}">
                         <i class="bi bi-box-seam me-1"></i>
                         Paket
                     </a>
-                </li>
-
-                <li class="nav-item">
-                    <a
-                        class="nav-link {{ request()->routeIs('customer.custom.*') ? 'active' : '' }}"
-                        href="{{ route('customer.custom.index') }}"
-                        >
-                        <i class="bi bi-sliders me-1"></i>
-                        Custom Catering
-                    </a>
-
                 </li>
 
                 <li class="nav-item">

@@ -225,71 +225,7 @@
                     </div>
                 </div>
 
-                {{-- DETAIL PAKET --}}
-                <div class="package-card p-4">
-                    <span class="package-label mb-3">
-                        <i class="bi bi-box-seam"></i>
-                        Paket Catering
-                    </span>
-
-                    <h1 class="h2 fw-bold mb-3">
-                        {{ $package->name }}
-                    </h1>
-
-                    <p class="text-secondary mb-0">
-                        {{ $package->description ?: 'Paket catering untuk kebutuhan acara keluarga, kantor, dan berbagai kegiatan lainnya.' }}
-                    </p>
-
-                    <hr class="my-4">
-
-                    <div class="d-flex align-items-center justify-content-between gap-3 mb-3">
-                        <h5 class="fw-bold mb-0">Isi paket</h5>
-                        <span class="badge bg-light text-secondary border">
-                            {{ $package->details->whereNotNull('menu')->count() }} jenis menu
-                        </span>
-                    </div>
-
-                    @forelse($package->details as $detail)
-                        @if($detail->menu)
-                            <div class="package-menu-row">
-                                <div class="package-menu-icon">
-                                    <i class="bi bi-check-lg"></i>
-                                </div>
-
-                                <div class="flex-grow-1">
-                                    <div class="fw-semibold">
-                                        {{ $detail->menu->name }}
-                                    </div>
-
-                                    @if($detail->menu->category)
-                                        <small class="text-success">
-                                            {{ $detail->menu->category->name }}
-                                        </small>
-                                    @endif
-
-                                    @if($detail->menu->description)
-                                        <p class="text-muted small mb-0 mt-1">
-                                            {{ $detail->menu->description }}
-                                        </p>
-                                    @endif
-                                </div>
-                            </div>
-                        @endif
-                    @empty
-                        <div class="text-center py-4">
-                            <i class="bi bi-inbox fs-2 text-muted"></i>
-                            <p class="text-muted mb-0 mt-2">
-                                Isi paket belum ditambahkan oleh admin.
-                            </p>
-                        </div>
-                    @endforelse
-                </div>
-
-            </div>
-
-            {{-- KOLOM KANAN --}}
-            <div class="col-lg-5">
-
+                
                 <div class="package-card package-order-card shadow-sm p-4">
 
                     <div class="mb-4">
@@ -380,46 +316,80 @@
                             Tambahkan ke Keranjang
                         </button>
 
-                        <button type="submit"
-                                name="redirect"
-                                value="custom"
-                                class="btn btn-outline-dark w-100 rounded-3 mt-2">
-                                <i class="bi bi-sliders me-2"></i>    
-                                Tambahkan menu Custom.
-                        </button>
                     </form>
-
-                    <hr class="my-4">
-
-                    {{-- CUSTOM CATERING --}}
-                    <div class="rounded-3 p-3" style="background:#f5faf6">
-                        <div class="d-flex gap-3 align-items-start">
-                            <div class="package-menu-icon">
-                                <i class="bi bi-sliders"></i>
-                            </div>
-
-                            <div>
-                                <div class="fw-bold mb-1">
-                                    Ingin menentukan menu sendiri?
-                                </div>
-                                <p class="text-muted small mb-3">
-                                    Pilih menu dan jumlah porsi sesuai kebutuhan acara. Admin akan meninjau permintaanmu.
-                                </p>
-
-                                <a href="{{ route('customer.custom.create') }}"
-                                   class="btn btn-outline-success btn-sm">
-                                    Buat Custom Catering
-                                    <i class="bi bi-arrow-right ms-1"></i>
-                                </a>
-                            </div>
-                        </div>
-                    </div>
 
                     <div class="text-center text-muted small mt-3">
                         <i class="bi bi-shield-check me-1"></i>
                         Pesanan akan diproses setelah detailnya dikonfirmasi.
                     </div>
 
+                </div>
+
+
+
+            </div>
+
+            {{-- KOLOM KANAN --}}
+            <div class="col-lg-5">
+
+                                {{-- DETAIL PAKET --}}
+                <div class="package-card p-4">
+                    <span class="package-label mb-3">
+                        <i class="bi bi-box-seam"></i>
+                        Paket Catering
+                    </span>
+
+                    <h1 class="h2 fw-bold mb-3">
+                        {{ $package->name }}
+                    </h1>
+
+                    <p class="text-secondary mb-0">
+                        {{ $package->description ?: 'Paket catering untuk kebutuhan acara keluarga, kantor, dan berbagai kegiatan lainnya.' }}
+                    </p>
+
+                    <hr class="my-4">
+
+                    <div class="d-flex align-items-center justify-content-between gap-3 mb-3">
+                        <h5 class="fw-bold mb-0">Isi paket</h5>
+                        <span class="badge bg-light text-secondary border">
+                            {{ $package->details->whereNotNull('menu')->count() }} jenis menu
+                        </span>
+                    </div>
+
+                    @forelse($package->details as $detail)
+                        @if($detail->menu)
+                            <div class="package-menu-row">
+                                <div class="package-menu-icon">
+                                    <i class="bi bi-check-lg"></i>
+                                </div>
+
+                                <div class="flex-grow-1">
+                                    <div class="fw-semibold">
+                                        {{ $detail->menu->name }}
+                                    </div>
+
+                                    @if($detail->menu->category)
+                                        <small class="text-success">
+                                            {{ $detail->menu->category->name }}
+                                        </small>
+                                    @endif
+
+                                    @if($detail->menu->description)
+                                        <p class="text-muted small mb-0 mt-1">
+                                            {{ $detail->menu->description }}
+                                        </p>
+                                    @endif
+                                </div>
+                            </div>
+                        @endif
+                    @empty
+                        <div class="text-center py-4">
+                            <i class="bi bi-inbox fs-2 text-muted"></i>
+                            <p class="text-muted mb-0 mt-2">
+                                Isi paket belum ditambahkan oleh admin.
+                            </p>
+                        </div>
+                    @endforelse
                 </div>
 
             </div>

@@ -18,8 +18,7 @@ class PaymentController extends Controller
 
     public function show(int $id)
     {
-        $payment = Payment::with([
-            'order.customRequest',
+        $payment = Payment::with([            
             'order.packages.package',
             'order.details.menu',
         ])->findOrFail($id);

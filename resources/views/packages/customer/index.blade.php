@@ -32,12 +32,6 @@
                         Pilih paket yang sesuai kebutuhan. Lihat isi paket dan tentukan jumlah porsi sebelum memesan.
                     </p>
                 </div>
-                <div class="col-lg-4 text-lg-end">
-                    <a href="{{ route('customer.custom.create') }}"
-                       class="btn btn-outline-success rounded-pill px-4 py-2">
-                        <i class="bi bi-sliders me-2"></i>Racik Menu Sendiri
-                    </a>
-                </div>
             </div>
         </div>
 

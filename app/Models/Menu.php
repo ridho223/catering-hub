@@ -33,8 +33,4 @@ class Menu extends Model
         return $this->hasMany(OrderDetail::class);
     }
 
-    public function customerRequestDetail()
-    {
-        return $this->hasMany(CustomerRequestDetail::class);
-    }
 }
