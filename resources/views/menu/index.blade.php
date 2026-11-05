@@ -1,576 +1,287 @@
-
 @extends('layouts.admin')
 
 @section('title', 'Data Menu')
 
 @section('content')
+@php
+    use Illuminate\Support\Str;
+
+    $filtered = request()->filled('search') || request()->filled('category') || request()->filled('status');
+    $statusOpts = ['' => 'Semua', 'Tersedia' => 'Tersedia', 'Habis' => 'Habis'];
+@endphp
+
 <style>
-    .menu-admin {
-        --ma-green: #198754;
-        --ma-border: #e7ece8;
-        color: #253129;
-    }
+    .mnx { --ink:#1f2a24; --mute:#6b7770; --line:#e6ebe7; --soft:#f5f8f5; --brand:#198754; }
+    .mnx-top { display:flex; justify-content:space-between; align-items:center; gap:1rem; flex-wrap:wrap; margin-bottom:1.1rem; }
+    .mnx-top p { margin:0; color:var(--mute); }
 
-    .menu-admin .page-heading {
-        display: flex;
-        align-items: flex-start;
-        justify-content: space-between;
-        gap: 16px;
-        flex-wrap: wrap;
-        margin-bottom: 24px;
-    }
+    .mnx-sum { display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:.75rem; margin-bottom:1.1rem; }
+    .mnx-tile { background:#fff; border:1px solid var(--line); border-radius:14px; padding:.9rem 1.1rem; display:flex; gap:.8rem; align-items:center; }
+    .mnx-tile i { width:40px; height:40px; border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:1.15rem; flex:none; }
+    .mnx-tile small { color:var(--mute); display:block; line-height:1.2; }
+    .mnx-tile strong { font-size:1.35rem; color:var(--ink); line-height:1.2; }
+    .i-g { background:#e3f4ea; color:#146c43; } .i-b { background:#e2f0fb; color:#0b5a8a; } .i-r { background:#fde8e8; color:#a52834; } .i-n { background:#eef2ef; color:#4b5a52; }
 
-    .menu-admin .page-heading h2 {
-        font-size: 1.55rem;
-        font-weight: 800;
-        margin-bottom: 6px;
-    }
+    /* toolbar */
+    .mnx-bar { display:flex; flex-wrap:wrap; gap:.6rem; align-items:center; margin-bottom:1rem; }
+    .mnx-search { position:relative; flex:1 1 240px; max-width:360px; }
+    .mnx-search i { position:absolute; left:.8rem; top:50%; transform:translateY(-50%); color:var(--mute); }
+    .mnx-bar .form-control, .mnx-bar .form-select { border-color:var(--line); border-radius:12px; }
+    .mnx-search input { padding-left:2.2rem; }
+    .mnx-bar .form-select { width:auto; min-width:170px; }
+    .mnx-pills { display:inline-flex; background:var(--soft); border:1px solid var(--line); border-radius:12px; padding:3px; position:relative; }
+    .mnx-pills > label { position:relative; margin:0; }
+    .mnx-pills input { position:absolute; top:0; left:0; width:1px; height:1px; opacity:0; pointer-events:none; }
+    .mnx-pills span { display:block; padding:.35rem .85rem; border-radius:9px; color:var(--mute); font-size:.88rem; font-weight:500; cursor:pointer; }
+    .mnx-pills input:checked + span { background:#fff; color:var(--brand); box-shadow:0 1px 3px rgba(0,0,0,.08); }
+    .mnx-pills input:focus-visible + span { box-shadow:0 0 0 .2rem rgba(25,135,84,.25); }
+    .mnx-toggle { display:inline-flex; border:1px solid var(--line); border-radius:12px; overflow:hidden; background:#fff; margin-left:auto; }
+    .mnx-toggle button { border:0; background:transparent; padding:.5rem .75rem; color:var(--mute); }
+    .mnx-toggle button.on { background:var(--brand); color:#fff; }
+    .mnx-reset { color:var(--mute); font-size:.88rem; text-decoration:none; }
+    .mnx-reset:hover { color:#a52834; }
 
-    .menu-admin .page-heading p {
-        margin: 0;
-        color: #748078;
-    }
+    /* tabel */
+    .mnx-wrap { background:#fff; border:1px solid var(--line); border-radius:16px; overflow:hidden; }
+    .mnx-table { width:100%; border-collapse:collapse; }
+    .mnx-table th { background:var(--soft); color:var(--mute); font-weight:600; font-size:.82rem; padding:.7rem 1rem; text-align:left; white-space:nowrap; }
+    .mnx-table td { padding:.75rem 1rem; border-top:1px solid var(--line); vertical-align:middle; }
+    .mnx-table tbody tr:hover { background:#fafcfa; }
+    .mnx-thumb { width:56px; height:56px; border-radius:12px; object-fit:cover; background:var(--soft); flex:none; display:flex; align-items:center; justify-content:center; color:#9aa59c; font-size:1.3rem; }
+    .mnx-name { font-weight:600; color:var(--ink); display:block; line-height:1.25; }
+    .mnx-desc { color:var(--mute); font-size:.82rem; display:block; max-width:300px; }
+    .mnx-price { font-weight:700; color:var(--ink); white-space:nowrap; }
+    .mnx-cat { display:inline-block; background:#f0f8f2; color:#236b3e; border-radius:8px; padding:.2rem .6rem; font-size:.8rem; font-weight:600; }
 
-    .menu-admin .stat-card {
-        height: 100%;
-        padding: 20px;
-        border: 1px solid var(--ma-border);
-        border-radius: 15px;
-        background: #fff;
-    }
+    .mnx-chip { display:inline-flex; align-items:center; gap:.35rem; padding:.22rem .7rem; border-radius:999px; font-size:.78rem; font-weight:600; white-space:nowrap; }
+    .mnx-chip--ok { background:#e3f4ea; color:#146c43; }
+    .mnx-chip--low { background:#fff1d6; color:#8a5a00; }
+    .mnx-chip--bad { background:#fde8e8; color:#a52834; }
+    .mnx-dot { width:6px; height:6px; border-radius:50%; background:currentColor; }
 
-    .menu-admin .stat-icon {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        width: 43px;
-        height: 43px;
-        border-radius: 12px;
-        background: #eaf6ed;
-        color: var(--ma-green);
-        font-size: 1.25rem;
-    }
+    .mnx-act { display:flex; gap:.35rem; justify-content:flex-end; }
+    .mnx-act .btn { --bs-btn-padding-x:.55rem; --bs-btn-padding-y:.3rem; border-radius:10px; }
 
-    .menu-admin .stat-label {
-        display: block;
-        margin-top: 14px;
-        color: #748078;
-        font-size: .84rem;
-    }
+    /* grid */
+    .mnx-grid { display:none; grid-template-columns:repeat(auto-fill,minmax(230px,1fr)); gap:1rem; }
+    .mnx[data-view="grid"] .mnx-grid { display:grid; }
+    .mnx[data-view="grid"] .mnx-wrap { display:none; }
+    .mnx-card { background:#fff; border:1px solid var(--line); border-radius:16px; overflow:hidden; display:flex; flex-direction:column; }
+    .mnx-card-img { position:relative; aspect-ratio:4/3; background:var(--soft); display:flex; align-items:center; justify-content:center; color:#9aa59c; font-size:2rem; }
+    .mnx-card-img img { width:100%; height:100%; object-fit:cover; }
+    .mnx-card-img .mnx-chip { position:absolute; top:.6rem; left:.6rem; background:#fff; box-shadow:0 1px 4px rgba(0,0,0,.12); }
+    .mnx-card-body { padding:.85rem 1rem 1rem; display:flex; flex-direction:column; gap:.35rem; flex:1; }
+    .mnx-card-foot { margin-top:auto; display:flex; justify-content:space-between; align-items:center; padding-top:.65rem; border-top:1px dashed var(--line); gap:.5rem; }
 
-    .menu-admin .stat-number {
-        display: block;
-        margin-top: 3px;
-        font-size: 1.6rem;
-        font-weight: 800;
-    }
+    .mnx-empty { text-align:center; padding:3rem 1rem; color:var(--mute); }
+    .mnx-empty i { font-size:2.5rem; }
 
-    .menu-admin .panel {
-        border: 1px solid var(--ma-border);
-        border-radius: 16px;
-        background: #fff;
-        overflow: hidden;
-    }
+    .mnx-page { display:flex; justify-content:space-between; align-items:center; gap:1rem; flex-wrap:wrap; margin-top:1rem; }
+    .mnx-page small { color:var(--mute); }
 
-    .menu-admin .panel-header {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 12px;
-        flex-wrap: wrap;
-        padding: 20px 22px;
-        border-bottom: 1px solid var(--ma-border);
-    }
+    /* pagination Bootstrap 5: sembunyikan teks "Showing ... results" bawaan, rata kanan */
+    .mnx-page nav .flex-sm-fill { justify-content:flex-end !important; }
+    .mnx-page nav .flex-sm-fill > div:first-child { display:none; }
+    .mnx-page .pagination { margin:0; }
+    .mnx-page .pagination .page-link { color:#267548; border-color:#e6ebe7; }
+    .mnx-page .pagination .active .page-link { background:#198754; border-color:#198754; color:#fff; }
 
-    .menu-admin .panel-header h5 {
-        margin: 0;
-        font-weight: 750;
-    }
-
-    .menu-admin .filter-area {
-        padding: 18px 22px;
-        border-bottom: 1px solid var(--ma-border);
-        background: #fbfcfb;
-    }
-
-    .menu-admin .form-control,
-    .menu-admin .form-select {
-        min-height: 42px;
-        border-color: #dfe6e1;
-        border-radius: 9px;
-        font-size: .9rem;
-    }
-
-    .menu-admin .form-control:focus,
-    .menu-admin .form-select:focus {
-        border-color: #86b99a;
-        box-shadow: 0 0 0 .18rem rgba(25, 135, 84, .10);
-    }
-
-    .menu-admin .table {
-        margin-bottom: 0;
-    }
-
-    .menu-admin .table thead th {
-        padding: 14px 16px;
-        background: #f4f8f5;
-        color: #536258;
-        font-size: .77rem;
-        font-weight: 800;
-        text-transform: uppercase;
-        letter-spacing: .35px;
-        white-space: nowrap;
-        border-bottom: 1px solid var(--ma-border);
-    }
-
-    .menu-admin .table tbody td {
-        padding: 15px 16px;
-        border-color: #eef1ee;
-        vertical-align: middle;
-    }
-
-    .menu-admin .table tbody tr:hover {
-        background: #fbfdfb;
-    }
-
-    .menu-admin .menu-photo {
-        width: 64px;
-        height: 58px;
-        object-fit: cover;
-        border: 1px solid #e8ede9;
-        border-radius: 10px;
-    }
-
-    .menu-admin .photo-placeholder {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        width: 64px;
-        height: 58px;
-        border: 1px solid #e8ede9;
-        border-radius: 10px;
-        background: #f5f7f5;
-        color: #9aa59c;
-        font-size: 1.3rem;
-    }
-
-    .menu-admin .menu-name {
-        display: block;
-        margin-bottom: 4px;
-        color: #26342a;
-        font-weight: 750;
-    }
-
-    .menu-admin .menu-description {
-        display: block;
-        max-width: 260px;
-        color: #7b867e;
-        font-size: .8rem;
-        line-height: 1.5;
-    }
-
-    .menu-admin .category-badge {
-        display: inline-block;
-        max-width: 190px;
-        padding: 6px 10px;
-        border: 1px solid #dcece0;
-        border-radius: 8px;
-        background: #f0f8f2;
-        color: #236b3e;
-        font-size: .78rem;
-        font-weight: 650;
-        white-space: normal;
-    }
-
-    .menu-admin .stock-badge,
-    .menu-admin .status-badge {
-        display: inline-flex;
-        align-items: center;
-        gap: 5px;
-        padding: 6px 9px;
-        border-radius: 999px;
-        font-size: .78rem;
-        font-weight: 700;
-        white-space: nowrap;
-    }
-
-    .menu-admin .stock-good,
-    .menu-admin .status-available {
-        background: #e9f7ed;
-        color: #187447;
-    }
-
-    .menu-admin .stock-low {
-        background: #fff4d9;
-        color: #8b6200;
-    }
-
-    .menu-admin .stock-empty,
-    .menu-admin .status-empty {
-        background: #fdecec;
-        color: #b42323;
-    }
-
-    .menu-admin .action-btn {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        width: 35px;
-        height: 35px;
-        border-radius: 9px;
-    }
-
-    .menu-admin .empty-state {
-        padding: 55px 20px;
-        text-align: center;
-    }
-
-    .menu-admin .empty-state i {
-        color: #a3b2a6;
-        font-size: 2.6rem;
-    }
-
-    .menu-admin .pagination {
-        margin-bottom: 0;
-    }
-
-    .menu-admin .pagination .page-link {
-        color: #267548;
-        border-color: #e2e9e3;
-    }
-
-    .menu-admin .pagination .active .page-link {
-        background: var(--ma-green);
-        border-color: var(--ma-green);
-        color: #fff;
-    }
-
-    @media (max-width: 767px) {
-        .menu-admin .page-heading h2 {
-            font-size: 1.35rem;
-        }
-
-        .menu-admin .panel-header,
-        .menu-admin .filter-area {
-            padding: 16px;
-        }
+    @media (max-width:767px){
+        .mnx-table thead { display:none; }
+        .mnx-table, .mnx-table tbody, .mnx-table tr, .mnx-table td { display:block; width:100%; }
+        .mnx-table tr { padding:.6rem 0; border-top:1px solid var(--line); }
+        .mnx-table td { border:0; padding:.3rem 1rem; }
+        .mnx-act { justify-content:flex-start; }
+        .mnx-toggle { margin-left:0; }
     }
 </style>
 
-<div class="container-fluid menu-admin py-2">
+<div class="container-fluid mnx" id="mnx" data-view="table">
 
-    {{-- HEADER --}}
-    <div class="page-heading">
-        <div>
-            <h2>Data Menu Catering</h2>
-            <p>Kelola menu, kategori, harga, stok, dan ketersediaan menu.</p>
-        </div>
-
+    <div class="mnx-top">
+        <p>Kelola menu, kategori, harga, stok, dan ketersediaan.</p>
         <div class="d-flex flex-wrap gap-2">
-            <a href="{{ route('categories.index') }}"
-               class="btn btn-outline-success">
-                <i class="bi bi-tags me-1"></i>
-                Kelola Kategori
-            </a>
-
-            <a href="{{ route('menu.create') }}"
-               class="btn btn-success">
-                <i class="bi bi-plus-lg me-1"></i>
-                Tambah Menu
-            </a>
+            <a href="{{ route('categories.index') }}" class="btn btn-outline-success"><i class="bi bi-tags me-1"></i> Kelola kategori</a>
+            <a href="{{ route('menu.create') }}" class="btn btn-success"><i class="bi bi-plus-lg me-1"></i> Tambah menu</a>
         </div>
     </div>
 
-    {{-- NOTIFIKASI --}}
-    @if(session('success'))
-        <div class="alert alert-success alert-dismissible fade show border-0 shadow-sm"
-             role="alert">
-            <i class="bi bi-check-circle-fill me-2"></i>
+    @if (session('success'))
+        <div class="alert alert-success alert-dismissible fade show" role="alert">
             {{ session('success') }}
-            <button type="button" class="btn-close"
-                    data-bs-dismiss="alert" aria-label="Tutup"></button>
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Tutup"></button>
         </div>
     @endif
-
-    @if(session('error'))
-        <div class="alert alert-danger alert-dismissible fade show border-0 shadow-sm"
-             role="alert">
+    @if (session('error'))
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
             {{ session('error') }}
-            <button type="button" class="btn-close"
-                    data-bs-dismiss="alert" aria-label="Tutup"></button>
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Tutup"></button>
         </div>
     @endif
 
-    {{-- RINGKASAN --}}
-    <div class="row g-3 mb-4">
-
-        <div class="col-6 col-xl-3">
-            <div class="stat-card">
-                <div class="stat-icon">
-                    <i class="bi bi-grid"></i>
-                </div>
-                <span class="stat-label">Total menu</span>
-                <span class="stat-number">{{ $menus->total() }}</span>
-            </div>
-        </div>
-
-        <div class="col-6 col-xl-3">
-            <div class="stat-card">
-                <div class="stat-icon">
-                    <i class="bi bi-tags"></i>
-                </div>
-                <span class="stat-label">Total kategori</span>
-                <span class="stat-number">{{ $categories->count() }}</span>
-            </div>
-        </div>
-
-        <div class="col-6 col-xl-3">
-            <div class="stat-card">
-                <div class="stat-icon">
-                    <i class="bi bi-check-circle"></i>
-                </div>
-                <span class="stat-label">Menu tersedia</span>
-                <span class="stat-number">{{ $availableCount }}</span>
-            </div>
-        </div>
-
-        <div class="col-6 col-xl-3">
-            <div class="stat-card">
-                <div class="stat-icon">
-                    <i class="bi bi-exclamation-circle"></i>
-                </div>
-                <span class="stat-label">Stok habis</span>
-                <span class="stat-number">{{ $outOfStockCount }}</span>
-            </div>
-        </div>
-
+    <div class="mnx-sum">
+        <div class="mnx-tile"><i class="bi bi-grid i-n"></i><div><small>Total menu</small><strong>{{ $menus->total() }}</strong></div></div>
+        <div class="mnx-tile"><i class="bi bi-tags i-b"></i><div><small>Kategori</small><strong>{{ $categories->count() }}</strong></div></div>
+        <div class="mnx-tile"><i class="bi bi-check-circle i-g"></i><div><small>Menu tersedia</small><strong>{{ $availableCount }}</strong></div></div>
+        <div class="mnx-tile"><i class="bi bi-exclamation-circle i-r"></i><div><small>Stok habis</small><strong>{{ $outOfStockCount }}</strong></div></div>
     </div>
 
-    {{-- TABEL MENU --}}
-    <div class="panel shadow-sm">
+    {{-- FILTER (server-side) --}}
+    <form action="{{ route('menu.index') }}" method="GET" class="mnx-bar" id="mnxFilter">
+        <div class="mnx-search">
+            <i class="bi bi-search"></i>
+            <input type="search" name="search" class="form-control" value="{{ request('search') }}" placeholder="Cari nama atau deskripsi, lalu Enter" aria-label="Cari menu">
+        </div>
 
-        <div class="panel-header">
-            <div>
-                <h5>Daftar Menu</h5>
-                <small class="text-muted">
-                    Gunakan pencarian atau filter untuk menemukan menu.
-                </small>
+        <select name="category" class="form-select" aria-label="Kategori" onchange="this.form.submit()">
+            <option value="">Semua kategori</option>
+            @foreach ($categories as $category)
+                <option value="{{ $category->id }}" @selected((string) request('category') === (string) $category->id)>{{ $category->name }}</option>
+            @endforeach
+        </select>
+
+        <div class="mnx-pills" role="group" aria-label="Status">
+            @foreach ($statusOpts as $value => $label)
+                <label>
+                    <input type="radio" name="status" value="{{ $value }}" {{ (string) request('status') === (string) $value ? 'checked' : '' }} onchange="this.form.submit()">
+                    <span>{{ $label }}</span>
+                </label>
+            @endforeach
+        </div>
+
+        @if ($filtered)
+            <a href="{{ route('menu.index') }}" class="mnx-reset"><i class="bi bi-x-circle me-1"></i>Reset</a>
+        @endif
+
+        <div class="mnx-toggle" role="group" aria-label="Tampilan">
+            <button type="button" data-set="table" class="on" title="Tampilan tabel" aria-label="Tampilan tabel"><i class="bi bi-list-ul"></i></button>
+            <button type="button" data-set="grid" title="Tampilan kartu" aria-label="Tampilan kartu"><i class="bi bi-grid-3x3-gap"></i></button>
+        </div>
+    </form>
+
+    @if ($menus->isEmpty())
+        <div class="mnx-wrap">
+            <div class="mnx-empty">
+                <i class="bi bi-search"></i>
+                <h5 class="mt-2 mb-1 text-dark">{{ $filtered ? 'Menu tidak ditemukan' : 'Belum ada menu' }}</h5>
+                <p>{{ $filtered ? 'Coba ubah kata pencarian atau filter.' : 'Tambahkan menu pertama untuk mulai menyusun paket.' }}</p>
+                @if ($filtered)
+                    <a href="{{ route('menu.index') }}" class="btn btn-outline-success">Reset filter</a>
+                @else
+                    <a href="{{ route('menu.create') }}" class="btn btn-success"><i class="bi bi-plus-lg me-1"></i> Tambah menu</a>
+                @endif
             </div>
-            <span class="badge bg-light text-dark border">
-                {{ $menus->firstItem() ?? 0 }}–{{ $menus->lastItem() ?? 0 }}
-                dari {{ $menus->total() }} data
-            </span>
         </div>
+    @else
 
-        {{-- FILTER SERVER-SIDE --}}
-        <div class="filter-area">
-            <form action="{{ route('menu.index') }}" method="GET">
-                <div class="row g-2 align-items-end">
-
-                    <div class="col-lg-5">
-                        <label for="search" class="form-label small fw-semibold">
-                            Cari menu
-                        </label>
-                        <div class="input-group">
-                            <span class="input-group-text bg-white">
-                                <i class="bi bi-search"></i>
-                            </span>
-                            <input type="text"
-                                   name="search"
-                                   id="search"
-                                   class="form-control"
-                                   value="{{ request('search') }}"
-                                   placeholder="Nama menu atau deskripsi...">
-                        </div>
-                    </div>
-
-                    <div class="col-sm-6 col-lg-3">
-                        <label for="category" class="form-label small fw-semibold">
-                            Kategori
-                        </label>
-                        <select name="category" id="category" class="form-select">
-                            <option value="">Semua kategori</option>
-                            @foreach($categories as $category)
-                                <option value="{{ $category->id }}"
-                                    @selected((string) request('category') === (string) $category->id)>
-                                    {{ $category->name }}
-                                </option>
-                            @endforeach
-                        </select>
-                    </div>
-
-                    <div class="col-sm-6 col-lg-2">
-                        <label for="status" class="form-label small fw-semibold">
-                            Status
-                        </label>
-                        <select name="status" id="status" class="form-select">
-                            <option value="">Semua status</option>
-                            <option value="Tersedia"
-                                @selected(request('status') === 'Tersedia')>
-                                Tersedia
-                            </option>
-                            <option value="Habis"
-                                @selected(request('status') === 'Habis')>
-                                Habis
-                            </option>
-                        </select>
-                    </div>
-
-                    <div class="col-lg-2 d-flex gap-2">
-                        <button type="submit" class="btn btn-success flex-grow-1">
-                            <i class="bi bi-funnel me-1"></i> Filter
-                        </button>
-                        <a href="{{ route('menu.index') }}"
-                           class="btn btn-outline-secondary"
-                           title="Reset filter"
-                           aria-label="Reset filter">
-                            <i class="bi bi-arrow-counterclockwise"></i>
-                        </a>
-                    </div>
-
-                </div>
-            </form>
-        </div>
-
-        <div class="table-responsive">
-            <table class="table align-middle">
+        {{-- TABEL --}}
+        <div class="mnx-wrap">
+            <table class="mnx-table">
                 <thead>
-                    <tr>
-                        <th>No.</th>
-                        <th>Foto</th>
-                        <th>Informasi Menu</th>
-                        <th>Kategori</th>
-                        <th>Harga / Porsi</th>
-                        <th>Stok</th>
-                        <th>Status</th>
-                        <th class="text-center">Aksi</th>
-                    </tr>
+                    <tr><th>Menu</th><th>Kategori</th><th>Harga / porsi</th><th>Stok</th><th>Status</th><th></th></tr>
                 </thead>
-
                 <tbody>
-                    @forelse($menus as $menu)
-                        <tr>
-                            <td class="text-muted">
-                                {{ $menus->firstItem() + $loop->index }}
-                            </td>
-
-                            <td>
-                                @if($menu->image)
-                                    <img
-                                        src="{{ asset('uploads/menu/' . $menu->image) }}"
-                                        alt="{{ $menu->name }}"
-                                        class="menu-photo"
-                                        loading="lazy">
+                @foreach ($menus as $menu)
+                    @php
+                        $img   = $menu->image ? asset('uploads/menu/' . $menu->image) : null;
+                        $ok    = $menu->status === 'Tersedia' && $menu->stock > 0;
+                        $stock = $menu->stock <= 0 ? 'bad' : ($menu->stock <= 5 ? 'low' : 'ok');
+                    @endphp
+                    <tr>
+                        <td>
+                            <div class="d-flex align-items-center gap-3">
+                                @if ($img)
+                                    <img class="mnx-thumb" src="{{ $img }}" alt="{{ $menu->name }}" loading="lazy">
                                 @else
-                                    <div class="photo-placeholder">
-                                        <i class="bi bi-image"></i>
-                                    </div>
+                                    <span class="mnx-thumb"><i class="bi bi-image"></i></span>
                                 @endif
-                            </td>
-
-                            <td>
-                                <span class="menu-name">{{ $menu->name }}</span>
-                                <span class="menu-description">
-                                    {{ \Illuminate\Support\Str::limit($menu->description ?: 'Belum ada deskripsi menu.', 85) }}
-                                </span>
-                            </td>
-
-                            <td>
-                                <span class="category-badge">
-                                    {{ $menu->category->name ?? 'Belum dikategorikan' }}
-                                </span>
-                            </td>
-
-                            <td class="fw-semibold text-nowrap">
-                                Rp{{ number_format($menu->price, 0, ',', '.') }}
-                            </td>
-
-                            <td>
-                                @if($menu->stock <= 0)
-                                    <span class="stock-badge stock-empty">0 porsi</span>
-                                @elseif($menu->stock <= 5)
-                                    <span class="stock-badge stock-low">
-                                        {{ $menu->stock }} porsi
-                                    </span>
-                                @else
-                                    <span class="stock-badge stock-good">
-                                        {{ $menu->stock }} porsi
-                                    </span>
-                                @endif
-                            </td>
-
-                            <td>
-                                @if($menu->status === 'Tersedia' && $menu->stock > 0)
-                                    <span class="status-badge status-available">
-                                        <i class="bi bi-check-circle-fill"></i>
-                                        Tersedia
-                                    </span>
-                                @else
-                                    <span class="status-badge status-empty">
-                                        <i class="bi bi-x-circle-fill"></i>
-                                        Habis
-                                    </span>
-                                @endif
-                            </td>
-
-                            <td>
-                                <div class="d-flex justify-content-center gap-2">
-                                    <a href="{{ route('menu.edit', $menu->id) }}"
-                                       class="btn btn-outline-warning btn-sm action-btn"
-                                       title="Edit menu"
-                                       aria-label="Edit {{ $menu->name }}">
-                                        <i class="bi bi-pencil-square"></i>
-                                    </a>
-
-                                    <form action="{{ route('menu.destroy', $menu->id) }}"
-                                          method="POST"
-                                          onsubmit="return confirm('Yakin ingin menghapus menu {{ addslashes($menu->name) }}?')">
-                                        @csrf
-                                        @method('DELETE')
-
-                                        <button type="submit"
-                                                class="btn btn-outline-danger btn-sm action-btn"
-                                                title="Hapus menu"
-                                                aria-label="Hapus {{ $menu->name }}">
-                                            <i class="bi bi-trash"></i>
-                                        </button>
-                                    </form>
+                                <div>
+                                    <span class="mnx-name">{{ $menu->name }}</span>
+                                    <span class="mnx-desc">{{ Str::limit($menu->description ?: 'Belum ada deskripsi.', 70) }}</span>
                                 </div>
-                            </td>
-                        </tr>
-                    @empty
-                        <tr>
-                            <td colspan="8">
-                                <div class="empty-state">
-                                    <i class="bi bi-search"></i>
-                                    <h5 class="fw-bold mt-3">Menu tidak ditemukan</h5>
-                                    <p class="text-muted mb-3">
-                                        Coba ubah kata pencarian atau filter kategori.
-                                    </p>
-                                    <a href="{{ route('menu.index') }}"
-                                       class="btn btn-outline-success">
-                                        Reset Filter
-                                    </a>
-                                </div>
-                            </td>
-                        </tr>
-                    @endforelse
+                            </div>
+                        </td>
+                        <td><span class="mnx-cat">{{ $menu->category->name ?? 'Tanpa kategori' }}</span></td>
+                        <td class="mnx-price">Rp{{ number_format($menu->price, 0, ',', '.') }}</td>
+                        <td><span class="mnx-chip mnx-chip--{{ $stock }}">{{ $menu->stock > 0 ? $menu->stock . ' porsi' : 'Kosong' }}</span></td>
+                        <td>
+                            <span class="mnx-chip {{ $ok ? 'mnx-chip--ok' : 'mnx-chip--bad' }}">
+                                <span class="mnx-dot"></span>{{ $ok ? 'Tersedia' : 'Habis' }}
+                            </span>
+                        </td>
+                        <td>
+                            <div class="mnx-act">
+                                <a href="{{ route('menu.edit', $menu->id) }}" class="btn btn-outline-primary" title="Edit" aria-label="Edit {{ $menu->name }}"><i class="bi bi-pencil"></i></a>
+                                <form action="{{ route('menu.destroy', $menu->id) }}" method="POST"
+                                      onsubmit="return confirm('Hapus menu {{ e($menu->name) }}? Tindakan ini tidak bisa dibatalkan.')">
+                                    @csrf @method('DELETE')
+                                    <button type="submit" class="btn btn-outline-danger" title="Hapus" aria-label="Hapus {{ $menu->name }}"><i class="bi bi-trash"></i></button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                @endforeach
                 </tbody>
             </table>
         </div>
 
-        {{-- PAGINATION --}}
-        @if($menus->hasPages())
-            <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 p-3 border-top">
-                <small class="text-muted">
-                    Menampilkan {{ $menus->firstItem() }} sampai
-                    {{ $menus->lastItem() }} dari {{ $menus->total() }} menu.
-                </small>
-                {{ $menus->withQueryString()->links() }}
+        {{-- KARTU --}}
+        <div class="mnx-grid">
+            @foreach ($menus as $menu)
+                @php
+                    $img   = $menu->image ? asset('uploads/menu/' . $menu->image) : null;
+                    $ok    = $menu->status === 'Tersedia' && $menu->stock > 0;
+                    $stock = $menu->stock <= 0 ? 'bad' : ($menu->stock <= 5 ? 'low' : 'ok');
+                @endphp
+                <article class="mnx-card">
+                    <div class="mnx-card-img">
+                        @if ($img)<img src="{{ $img }}" alt="{{ $menu->name }}" loading="lazy">@else<i class="bi bi-image"></i>@endif
+                        <span class="mnx-chip {{ $ok ? 'mnx-chip--ok' : 'mnx-chip--bad' }}"><span class="mnx-dot"></span>{{ $ok ? 'Tersedia' : 'Habis' }}</span>
+                    </div>
+                    <div class="mnx-card-body">
+                        <div><span class="mnx-cat">{{ $menu->category->name ?? 'Tanpa kategori' }}</span></div>
+                        <span class="mnx-name">{{ $menu->name }}</span>
+                        <span class="mnx-desc">{{ Str::limit($menu->description ?: 'Belum ada deskripsi.', 60) }}</span>
+                        <div class="mnx-card-foot">
+                            <div>
+                                <div class="mnx-price">Rp{{ number_format($menu->price, 0, ',', '.') }}</div>
+                                <span class="mnx-chip mnx-chip--{{ $stock }}">{{ $menu->stock > 0 ? $menu->stock . ' porsi' : 'Kosong' }}</span>
+                            </div>
+                            <div class="mnx-act">
+                                <a href="{{ route('menu.edit', $menu->id) }}" class="btn btn-outline-primary" title="Edit" aria-label="Edit {{ $menu->name }}"><i class="bi bi-pencil"></i></a>
+                                <form action="{{ route('menu.destroy', $menu->id) }}" method="POST"
+                                      onsubmit="return confirm('Hapus menu {{ e($menu->name) }}? Tindakan ini tidak bisa dibatalkan.')">
+                                    @csrf @method('DELETE')
+                                    <button type="submit" class="btn btn-outline-danger" title="Hapus" aria-label="Hapus {{ $menu->name }}"><i class="bi bi-trash"></i></button>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                </article>
+            @endforeach
+        </div>
+
+        @if ($menus->hasPages())
+            <div class="mnx-page">
+                <small>Menampilkan {{ $menus->firstItem() }}–{{ $menus->lastItem() }} dari {{ $menus->total() }} menu</small>
+                {{ $menus->withQueryString()->links('pagination::bootstrap-5') }}
             </div>
         @endif
-
-    </div>
-
+    @endif
 </div>
+
+<script>
+(function () {
+    const root = document.getElementById('mnx');
+    if (!root) return;
+    const buttons = root.querySelectorAll('.mnx-toggle button');
+    function setView(v) {
+        root.dataset.view = v;
+        buttons.forEach(b => b.classList.toggle('on', b.dataset.set === v));
+        try { localStorage.setItem('mnx-view', v); } catch (e) {}
+    }
+    buttons.forEach(b => b.addEventListener('click', () => setView(b.dataset.set)));
+    try { setView(localStorage.getItem('mnx-view') || 'table'); } catch (e) { setView('table'); }
+})();
+</script>
 @endsection

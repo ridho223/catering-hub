@@ -66,7 +66,7 @@ class UserController extends Controller
      */
     public function show(string $id)
     {
-        //
+        return view('admin.profile.show', ['user' => Auth::user()]);   // sesuaikan nama view        
     }
 
     /**
@@ -79,39 +79,53 @@ class UserController extends Controller
 
     /**
      * Update the specified resource in storage.
-     */
-    public function update(Request $request, User $user)
+     */     
+ 
+    public function update(Request $request)
     {
+        $user = Auth::user();
+ 
+        // Hanya nama, email, dan foto. Level dan status sengaja tidak bisa diubah dari sini.
         $validated = $request->validate([
-            'name' => 'required|string|max:255',
-            'email' => 'required|email|max:255|unique:users,email,'. $user->id,
-            'level' => 'required|in:Admin,Superadmin',
-            'status' => 'required|in:Aktif,Non-Aktif',
-            'avatar' => 'nullable|image|mimes:jpg,jpeg,png,webp|max:2048',
-            'password' => 'nullable|string|min:8|confirmed',
+            'name'          => 'required|string|max:255',
+            'email'         => 'required|email|max:255|unique:users,email,' . $user->id,
+            'avatar'        => 'nullable|image|mimes:jpg,jpeg,png,webp|max:2048',
+            'remove_avatar' => 'nullable|boolean',
         ]);
-
-        $user->name = $validated['name'];
+ 
+        $user->name  = $validated['name'];
         $user->email = $validated['email'];
-        $user->level = $validated['level'];
-        $user->status = $validated['status'];
-
-        if($request->hasFile('avatar')){
-
-            if($user->avatar && Storage::disk('public')->exists($user->avatar)){
+ 
+        if ($request->hasFile('avatar')) {
+            // foto baru: hapus yang lama lalu simpan
+            if ($user->avatar && Storage::disk('public')->exists($user->avatar)) {
                 Storage::disk('public')->delete($user->avatar);
             }
-
-            $user->avatar = $request->file('avatar')->store('avatars','public');
+            $user->avatar = $request->file('avatar')->store('avatars', 'public');
+ 
+        } elseif ($request->boolean('remove_avatar') && $user->avatar) {
+            // hanya hapus foto
+            Storage::disk('public')->delete($user->avatar);
+            $user->avatar = null;
         }
-
-        if(!empty($validated['password'])) {
-            $user->password = Hash::make($validated['password']);
-        }
-
+ 
         $user->save();
-
-        return redirect()->route('users.index')->with('success','User Berhasil diperbarui');
+ 
+        return redirect()->route('admin.profile')->with('success', 'Profil berhasil diperbarui.');
+    }
+ 
+    public function updatePassword(Request $request)
+    {
+        $request->validate([
+            'current_password' => 'required|current_password',
+            'password'         => 'required|string|min:8|confirmed',
+        ]);
+ 
+        $user = Auth::user();
+        $user->password = Hash::make($request->password);
+        $user->save();
+ 
+        return redirect()->route('admin.profile')->with('success', 'Password berhasil diubah.');
     }
 
     /**

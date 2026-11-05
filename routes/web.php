@@ -9,6 +9,7 @@ use App\Http\Controllers\CustomerAuthController;
 use App\Http\Controllers\CustomerController;
 use App\Http\Controllers\CustomerOrderController;
 use App\Http\Controllers\Admin\PaymentController as AdminPaymentController;
+use App\Http\Controllers\Admin\NotificationController as AdminNotificationController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\MenuController;
 use App\Http\Controllers\OrderController;
@@ -37,6 +38,8 @@ Route::get('/about', [HomeController::class,'about'])->name('about');
 Route::get('/contact', [HomeController::class,'contact'])->name('contact');
 Route::get('/paket',[PackageController::class,'customerIndex'])->name('customer.packages.index');
 Route::get('/paket/{package}',[PackageController::class,'customerShow'])->name('customer.packages.show');
+Route::get('/prasmanan',[PackageController::class,'customerPrasmananIndex'])->name('customer.prasmanan.index');
+Route::get('/prasmanan/{package}',[PackageController::class,'customerPrasmananShow'])->name('customer.prasmanan.show');
 
 // Cart
 
@@ -70,6 +73,9 @@ Route::middleware('auth')->prefix('admin')->group(function(){
 
     Route::get('/dashboard',[DashboardController::class,'index'])->name('dashboard');
 
+    Route::get('/laporan', [DashboardController::class, 'report'])->name('reports.index');
+    Route::get('/laporan/unduh', [DashboardController::class, 'exportReport'])->name('reports.export');
+
     Route::get('/profile', [AuthController::class,'profile'])->name('admin.profile');
     Route::get('/profile/edit',[AuthController::class,'editProfile'])->name('admin.profile.edit');
     Route::put('/profile',[AuthController::class,'UpdateProfile'])->name('admin.profile.update');
@@ -92,6 +98,11 @@ Route::middleware('auth')->prefix('admin')->group(function(){
         '/orders/{order}/shipping',
         [OrderController::class, 'updateShipping']
     )->name('orders.shipping.update');
+    Route::post('/orders/{order}/tunai', [AdminPaymentController::class, 'storeCash'])->name('admin.orders.cash');
+
+    Route::get('/notifikasi/poll', [AdminNotificationController::class, 'poll'])->name('admin.notifications.poll');
+    Route::get('/notifikasi/{id}/buka', [AdminNotificationController::class, 'open'])->name('admin.notifications.open');
+    Route::post('/notifikasi/baca-semua', [AdminNotificationController::class, 'readAll'])->name('admin.notifications.read-all');
 
     Route::middleware(['auth', 'superadmin'])->group(function(){
         Route::resource('users', UserController::class);

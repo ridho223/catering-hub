@@ -7,6 +7,7 @@ use App\Models\Payment;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rule;
 
 class PaymentController extends Controller
 {
@@ -19,91 +20,87 @@ class PaymentController extends Controller
      */
     public function create(Order $order)
     {
-        $account = Auth::guard('customer')->user();
+        $order = $this->ownedOrder($order);
 
-        $customer = $account->customer;
-
-        abort_if(!$customer, 404);
-
-        $order = $customer->orders()->with('payment')->findOrFail($order->id);
-
-        if($order->payment && $order->payment->status === 'Dibayar'){
-            return redirect()->route('customer.orders.show', $order->id)->with('success','Pesanan ini sudah dibayar');
+        if ($order->isFullyPaid()) {
+            return redirect()->route('customer.orders.show', $order->id)->with('success', 'Pesanan ini sudah lunas');
         }
 
-        if (
-            $order->delivery_method === 'delivery'
-            && $order->delivery_distance === null
-        ) {
-            return redirect()
-                ->route('customer.orders.show', $order->id)
-                ->with(
-                    'error',
-                    'Pembayaran belum tersedia karena pengiriman belum dikonfirmasi admin.'
-                );
+        if ($order->delivery_method === 'delivery' && $order->delivery_distance === null) {
+            return redirect()->route('customer.orders.show', $order->id)
+                ->with('error', 'Pembayaran belum tersedia karena pengiriman belum dikonfirmasi admin.');
         }
 
         return view('customer.payment.create', compact('order'));
     }
 
-    /**
-     * Store a newly created resource in storage.
-     */
     public function store(Request $request, Order $order)
     {
-        $account = Auth::guard('customer')->user();
+        $order = $this->ownedOrder($order);
+        $back  = redirect()->route('customer.orders.show', $order->id);
 
-        $customer = $account->customer;
+        if ($order->isFullyPaid()) {
+            return $back->with('error', 'Pesanan ini sudah lunas');
+        }
+        if ($order->hasPendingPayment()) {
+            return $back->with('error', 'Masih ada pembayaran yang menunggu verifikasi admin.');
+        }
+        if ($order->delivery_method === 'delivery' && $order->delivery_distance === null) {
+            return $back->with('error', 'Pembayaran belum tersedia karena pengiriman belum dikonfirmasi admin.');
+        }
 
-        abort_if(!$customer, 404);
-
-        $order = $customer->orders()->with('payment')->findOrFail($order->id);
+        $min = (int) round($order->minPayment());
+        $max = (int) round($order->maxPayment());
 
         $validated = $request->validate([
+            'amount' => ['required', 'integer', 'min:' . $min, 'max:' . $max],
             'method' => 'required|in:transfer,qris',
-            'proof' => 'required|image|mimes:jpg,jpeg,png,webp|max:2048',
-            'notes' => 'nullable|string|max:255',
+            'proof'  => 'required|image|mimes:jpg,jpeg,png,webp|max:2048',
+            'notes'  => 'nullable|string|max:255',
+        ], [
+            'amount.integer' => 'Nominal harus berupa angka bulat, tanpa titik atau koma.',
+            'amount.min'     => 'Nominal minimal Rp' . number_format($min, 0, ',', '.')
+                                . ($order->paidAmount() > 0 ? '.' : ' (' . Order::MIN_PAYMENT_PERCENT . '% dari total pesanan).'),
+            'amount.max'     => 'Nominal tidak boleh melebihi sisa tagihan Rp' . number_format($max, 0, ',', '.') . '.',
         ]);
 
-        $payment = $order->payment;
+        $amount = (float) $validated['amount'];
+        $lunas  = $amount >= $order->remainingAmount() - 0.5;
 
-        if($payment && $payment->status === 'Dibayar'){
-            return redirect()->route('customer.orders.show', $order->id)->with('error','Pesanan ini sudah dibayar');
+        if ($lunas) {
+            $amount = $order->remainingAmount();
         }
 
-        $proof = $request->file('proof')->store('payments','public');
+        // Jenis ditentukan server dari nominal, bukan dipilih customer
+        $type = $order->paidAmount() > 0
+            ? ($lunas ? 'pelunasan' : 'cicilan')
+            : ($lunas ? 'lunas' : 'dp');
 
-        if($payment){
+        $proof = $request->file('proof')->store('payments', 'public');
 
-            if(
-                $payment->proof && Storage::disk('public')->exists($payment->proof)
-            ){
-                Storage::disk('public')->delete($payment->proof);
-            }
+        $payment = Payment::create([
+            'order_id'       => $order->id,
+            'type'           => $type,
+            'method'         => $validated['method'],
+            'amount'         => $amount,
+            'claimed_amount' => $amount,
+            'status'         => 'Menunggu Verifikasi',
+            'proof'          => $proof,
+            'paid_at'        => null,
+            'notes'          => $validated['notes'] ?? null,
+        ]);
 
-            $payment->update([
-                'method' => $validated['method'],
-                'amount' => $order->total,
-                'status' => 'Menunggu Verifikasi',
-                'proof' => $proof,
-                'paid_at' => null,
-                'notes' => $validated['notes'] ?? null,
-            ]);
-            
-        }else{
-            Payment::create([
-                'order_id' => $order->id,
-                'method' => $validated['method'],
-                'amount' => $order->total,
-                'status' => 'Menunggu Verifikasi',
-                'proof' => $proof,
-                'paid_at' => null,
-                'notes' => $validated['notes'] ?? null,
-            ]);
-            
-        }
+        app(\App\Services\AdminNotifier::class)->paymentProof($payment);
 
-        return redirect()->route('customer.orders.show', $order->id)->with('success','Bukti pembayaran berhasil dikirim dan sedang menunggu verifikasi admin');
+        return redirect()->route('checkout.success', $order->id)->with('success', 'Bukti pembayaran berhasil dikirim dan sedang menunggu verifikasi admin');
+    }
+
+    private function ownedOrder(Order $order): Order
+    {
+        $customer = Auth::guard('customer')->user()->customer;
+        abort_if(!$customer, 404);
+
+        return $customer->orders()->with('payments')->findOrFail($order->id);
     }
 
     /**

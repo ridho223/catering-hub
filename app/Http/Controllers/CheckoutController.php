@@ -98,8 +98,8 @@ class CheckoutController extends Controller
                 */                
 
                 $order = Order::create([
-                    'order_code' => 'ORD-' . now()->format('YmdHis') . '-' . random_int(100, 999),                      
-                    'customer_id' => $customer->id,
+                    'order_code' => 'ORD-' . now()->format('YmdHis') . '-' . random_int(100, 999),
+                    'customer_id' => $customer->id,                    
                     'order_date' => now()->toDateString(),
                     'delivery_date' => $validated['delivery_date'],
                     'delivery_method' => $validated['delivery_method'],
@@ -231,21 +231,6 @@ class CheckoutController extends Controller
                 return $order;
             });
 
-            /*
-            |--------------------------------------------------------------------------
-            | 7. Kosongkan keranjang
-            |--------------------------------------------------------------------------
-            */
-
-            session()->forget('cart');
-
-            return redirect()
-                ->route('checkout.success', $order)
-                ->with(
-                    'success',
-                    'Pesanan berhasil dibuat.'
-                );
-
         } catch (\Exception $e) {
 
             return back()
@@ -255,6 +240,23 @@ class CheckoutController extends Controller
                     $e->getMessage()
                 );
         }
+
+
+            // Pesanan sudah tersimpan. Bagian di bawah sengaja di luar try/catch,
+            // supaya masalah pada redirect tidak dilaporkan sebagai "checkout gagal".
+
+             session()->forget('cart');
+
+            app(\App\Services\AdminNotifier::class)->newOrder($order);
+
+            // Ambil sendiri langsung ke halaman pembayaran
+            if($order->delivery_method === 'pickup'){
+                return redirect()->route('customer.payment.create', $order->id)
+                ->with('success', 'Pesanan dibuat. silakan lakukan pembayaran.');
+            }
+
+            return redirect()->route('customer.order.show', $order->id)
+                ->with('success','Pesanan dibuat. Admin akan mengonfirmasi ongkir, setelah itu anda bisa membayar.');
     }
 
     public function success(Order $order)
@@ -270,6 +272,7 @@ class CheckoutController extends Controller
                 'customer',
                 'packages.package',
                 'details.menu',
+                'payments',
             ])
         ->findOrFail($order->id);
 

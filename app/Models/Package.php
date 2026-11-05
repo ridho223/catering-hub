@@ -6,8 +6,9 @@ use Illuminate\Database\Eloquent\Model;
 
 class Package extends Model
 {
-    protected $fillable = [ 
+    protected $fillable = [
         'name',
+        'package_type',
         'description',
         'price',
         'image',
@@ -24,4 +25,3 @@ class Package extends Model
         return $this->hasMany(OrderPackage::class);
     }
 }
-

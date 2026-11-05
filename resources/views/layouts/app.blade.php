@@ -31,37 +31,55 @@
         @include('partials.footer')        
         <script src="{{asset('assets/js/bootstrap/bootstrap.bundle.min.js')}}"></script>    
         <script src="{{asset('assets/js/script.js')}}"></script>
-<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+        <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+        <script src="{{ asset('assets/js/confirm-dialog.js') }}"></script>
 
 @php
     $flashSuccess = session()->pull('success');
     $flashError   = session()->pull('error');
 @endphp
 
-@if ($flashSuccess)
-<script>
-    Swal.fire({
-        icon: 'success',
-        title: 'Berhasil',
-        text: @json($flashSuccess),
-        confirmButtonColor: '#198754',
-        timer: 2500,
-        timerProgressBar: true,
-        showConfirmButton: false
-    });
-</script>
-@endif
+<style>
+    .bj-toast { --bj-c:#198754; border-radius:16px !important; padding:.8rem 1rem !important; border:1px solid #e3ebe5; border-left:5px solid var(--bj-c); box-shadow:0 14px 34px rgba(15,25,19,.16) !important; }
+    .bj-toast.bj-error { --bj-c:#dc3545; }
+    .bj-toast .swal2-title { font-size:.95rem !important; font-weight:800 !important; color:#1f2a24 !important; margin:0 !important; text-align:left; }
+    .bj-toast .swal2-html-container { font-size:.84rem !important; color:#5c6a62 !important; margin:.15rem 0 0 !important; text-align:left; }
+    .bj-toast .swal2-timer-progress-bar { background:var(--bj-c); opacity:.4; }
+</style>
 
-@if ($flashError)
 <script>
-    Swal.fire({
-        icon: 'error',
-        title: 'Oops...',
-        text: @json($flashError),
-        confirmButtonColor: '#198754'
+(function () {
+    var success = @json($flashSuccess);
+    var error   = @json($flashError);
+
+    var Toast = Swal.mixin({
+        toast: true,
+        position: 'top-end',
+        showConfirmButton: false,
+        showCloseButton: true,
+        timerProgressBar: true,
+        didOpen: function (el) {
+            el.addEventListener('mouseenter', Swal.stopTimer);
+            el.addEventListener('mouseleave', Swal.resumeTimer);
+        }
     });
+
+    var norm = function (s) { return (s || '').replace(/\s+/g, ' ').trim(); };
+    var queue = [];
+    if (error)   { queue.push({ text: error,   opts: { icon: 'error',   title: 'Gagal',    text: error,   timer: 6500, customClass: { popup: 'bj-toast bj-error' } } }); }
+    if (success) { queue.push({ text: success, opts: { icon: 'success', title: 'Berhasil', text: success, timer: 4000, customClass: { popup: 'bj-toast' } } }); }
+
+    (function next() {
+        var q = queue.shift();
+        if (!q) { return; }
+        // buang alert inline di halaman yang isinya sama, supaya tidak muncul dobel
+        document.querySelectorAll('main .alert').forEach(function (a) {
+            if (norm(a.textContent).indexOf(norm(q.text)) !== -1) { a.remove(); }
+        });
+        Toast.fire(q.opts).then(next);
+    })();
+})();
 </script>
-@endif
 
         {{-- <script src="/assets/js/bootstrap/bootstrap.bundle.min.js"></script>
     <script src="/assets/js/script.js"></script> --}}

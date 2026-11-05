@@ -24,26 +24,24 @@ class CartController extends Controller
         return view('cart.index', compact('cart','total'));
     }
 
-
-    public function add(Request $request , Package $package)
+    public function add(Request $request, Package $package)
     {
-        if($package->status !== 'Tersedia'){
-            return back()->with('error','Paket sudah tidak tersedia');
+        if ($package->status !== 'Tersedia') {
+            return back()->with('error', 'Paket sudah tidak tersedia.');
         }
 
-        $quantity =(int) $request->quantity;
-    
-        if($quantity < 1){
-            return back()->with('error','Jumlah porsi minimal 1.');
-            }    
-            
-        $cart = session()->get('cart',[]);
+        $validated = $request->validate([
+            'quantity' => 'required|integer|min:1',
+            'redirect' => 'nullable|in:checkout,cart',
+        ]);
 
+        $quantity = (int) $validated['quantity'];
+        $cart = session()->get('cart', []);
         $key = 'package_' . $package->id;
 
-        if(isset($cart[$key])){
-            $quantity += $cart[$key]['quantity'];
-        }            
+        if (isset($cart[$key])) {
+            $quantity += (int) $cart[$key]['quantity'];
+        }
 
         $cart[$key] = [
             'type' => 'package',
@@ -56,19 +54,13 @@ class CartController extends Controller
 
         session()->put('cart', $cart);
 
-        if($request->input('redirect') === 'checkout'){
+        if ($request->input('redirect') === 'checkout') {
             return redirect()->route('checkout.index');
         }
 
-        if($request->input('redirect') === 'custom'){
-            return redirect()->route('customer.custom.create', [
-                'include_packages' => 1,
-                'package_id' => $package->id,
-                'quantity' => $quantity,
-            ]);
-        }
-
-        return redirect()->route('cart.index')->with('success','Menu berhasil ditambahkan ke keranjang');
+        return redirect()
+            ->route('cart.index')
+            ->with('success', 'Paket berhasil ditambahkan ke keranjang.');
     }
 
     public function update(Request $request, string $key)

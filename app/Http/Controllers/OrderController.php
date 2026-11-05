@@ -59,7 +59,12 @@ class OrderController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'customer_id' => 'required|exists:customers,id',
+            'customer_mode'        => 'required|in:existing,new',
+            'customer_id'          => 'required_if:customer_mode,existing|nullable|exists:customers,id',
+            'new_customer.name'    => 'required_if:customer_mode,new|nullable|string|max:255',
+            'new_customer.phone'   => 'required_if:customer_mode,new|nullable|string|max:30',
+            'new_customer.address' => 'nullable|string',
+
             'order_date' => 'required|date',
             'delivery_date' => 'required|date|after_or_equal:order_date',
             'notes' => 'nullable|string',
@@ -153,10 +158,25 @@ class OrderController extends Controller
                         . strtoupper(Str::random(5));
                 } while (Order::where('order_code', $orderCode)->exists());
 
+
+                if ($validated['customer_mode'] === 'new') {
+                    // rapikan nomor ("0812 3456-789" => "08123456789") supaya tidak jadi pelanggan ganda
+                    $phone = preg_replace('/[^\d+]/', '', $validated['new_customer']['phone']);
+                
+                    $customerId = Customer::firstOrCreate(
+                        ['phone' => $phone],
+                        [
+                            'name'    => $validated['new_customer']['name'],
+                            'address' => $validated['new_customer']['address'] ?? null,
+                        ]
+                    )->id;
+                } else {
+                    $customerId = $validated['customer_id'];
+                }
+
                 $order = Order::create([
                     'order_code' => $orderCode,
-                    'customer_id' => $validated['customer_id'],
-                    'order_type' => 'paket',
+                    'customer_id' => $customerId,                  
                     'order_date' => $validated['order_date'],
                     'delivery_date' => $validated['delivery_date'],
                     'status' => 'Pending',
@@ -287,310 +307,182 @@ class OrderController extends Controller
      */
     public function update(Request $request, Order $order)
     {
+        // Urutan alur: Pending -> Diproses -> Siap Diantar/Diambil -> Selesai
+        $flow = ['Pending', 'Diproses', 'Siap_diambil_atau_diantar', 'Selesai'];
+    
+        $currentIdx = array_search($order->status, $flow, true);
+        if ($currentIdx === false) {
+            $currentIdx = 1;
+        }
+    
+        // Pending: status berubah otomatis setelah pembayaran, jadi tidak bisa diubah manual di sini.
+        $allowedStatuses = $currentIdx === 0
+            ? []
+            : array_slice($flow, $currentIdx);   // status sekarang + tahap berikutnya    
+    
         $validated = $request->validate([
-            'customer_id' => 'required|exists:customers,id',
-
-            'order_type' => 'required|in:paket,paket_custom,custom',
-
-            'status' => 'required|in:Pending,Diproses,Selesai',
-
+            'status' => $allowedStatuses
+            ? ['required', Rule::in($allowedStatuses)]
+            : ['nullable'],
             'order_date' => 'required|date',
             'delivery_date' => 'required|date|after_or_equal:order_date',
-
             'notes' => 'nullable|string',
-
-            'packages' => 'nullable|array',
+            'packages' => 'required|array|min:1',
             'packages.*.package_id' => 'required|exists:packages,id',
             'packages.*.quantity' => 'required|integer|min:1',
-            'packages.*.price' => 'required|numeric|min:0',
-
-            'items.*.menu_id' => ['required', 'exists:menus,id'],
-            'items.*.quantity' => ['required', 'integer', 'min:1'],
-            'items.*.price' => ['required', 'numeric', 'min:0'],
-        
-            'replacements' => 'nullable|array',
-            'replacements.*' => 'nullable|array',
-            'replacements.*.*' => 'nullable|exists:menus,id',
         ]);
 
-        $packageItems = $validated['packages'] ?? [];
-        $menuItems = $validated['items'] ?? [];
-        $replacementItems = $request->input('replacements', []);
-        
-
-        // Pastikan kombinasi paket dan menu sesuai jenis pesanan.
-        if (
-            $validated['order_type'] === 'paket'
-            && (empty($packageItems) || !empty($menuItems))
-        ) {
-            return back()
-                ->withInput()
-                ->with('error', 'Pesanan paket harus berisi paket tanpa menu custom.');
-        }
-
-        if (
-            $validated['order_type'] === 'paket_custom'
-            && (empty($packageItems) || empty($menuItems))
-        ) {
-            return back()
-                ->withInput()
-                ->with('error', 'Pesanan paket + custom harus berisi paket dan menu custom.');
-        }
-
-        if (
-            $validated['order_type'] === 'custom'
-            && (!empty($packageItems) || empty($menuItems))
-        ) {
-            return back()
-                ->withInput()
-                ->with('error', 'Pesanan custom harus berisi menu tanpa paket.');
-        }
-
-        if($validated['order_type'] !== 'paket_custom'){
-            $replacementItems = [];
-        }
-
-             try {
-            DB::transaction(function () use (
-                $order,
-                $validated,
-                $packageItems,
-                $menuItems,
-                $replacementItems
-            ) {
-
-        $lockedOrder = Order::whereKey($order->id)->lockForUpdate()
-            ->firstOrFail();         
-
-        // Jika admin memilih menu baru, gunakan pilihan tersebut.
-        // Jika dropdown kosong, pertahankan menu yang sudah digunakan.
-        $resolveReplacement = function (
-            $packageIndex,
-            $originalMenuId
-        ) use ($validated, $replacementItems) {
-            if ($validated['order_type'] !== 'paket_custom') {
-                return null;
+          $newStatus = $allowedStatuses ? $validated['status'] : $order->status;
+          if ($newStatus === 'Selesai' && !$order->isFullyPaid()) {
+                return back()->withInput()->with('error', 'Pesanan belum lunas. Minta customer melunasi atau catat pembayaran tunai dulu.');
             }
 
-            $replacementId =
-                $replacementItems[$packageIndex][$originalMenuId] ?? null;
+        try {
+            DB::transaction(function () use ($validated, $order, $newStatus) {
+                $lockedOrder = Order::whereKey($order->id)
+                    ->lockForUpdate()
+                    ->firstOrFail();
 
-            if (!filled($replacementId)) {
-                return null;
-            }
+                // Kembalikan stok dari detail pesanan sebelumnya.
+                $oldDetails = OrderDetail::where(
+                    'order_id',
+                    $lockedOrder->id
+                )->get();
 
-            $replacementId = (int) $replacementId;
+                foreach ($oldDetails as $detail) {
+                    $menu = Menu::whereKey($detail->menu_id)
+                        ->lockForUpdate()
+                        ->first();
 
-            // Jika yang dipilih kembali adalah menu bawaan,
-            // berarti penggantian dibatalkan.
-            return $replacementId === (int) $originalMenuId
-                ? null
-                : $replacementId;
-        };
+                    if ($menu) {
+                        $menu->increment('stock', $detail->quantity);
+                    }
+                }
 
-        // 1. Kembalikan stok seluruh detail lama, baik paket maupun menu custom.
-        $oldDetails = OrderDetail::where('order_id', $lockedOrder->id)->get();
+                $packageRows = [];
+                $requiredStock = [];
+                $subtotalPaket = 0;
 
-        foreach ($oldDetails as $detail) {
-            $menu = Menu::whereKey($detail->menu_id)
-                ->lockForUpdate()
-                ->first();
+                // Validasi paket dan hitung kebutuhan stok.
+                foreach ($validated['packages'] as $item) {
+                    $package = Package::where('status', 'Tersedia')
+                        ->with('details.menu')
+                        ->lockForUpdate()
+                        ->findOrFail($item['package_id']);
 
-            if ($menu) {
-                $menu->increment('stock', $detail->quantity);
-            }
-        }
+                    if ($package->details->isEmpty()) {
+                        throw new \RuntimeException(
+                            "Paket {$package->name} belum memiliki menu."
+                        );
+                    }
 
-        // 2. Ambil paket dan komponen paket yang dipilih admin.
-        $subtotalPaket = 0;
-        $packageRows = [];
-        $requiredStock = [];
+                    $quantity = (int) $item['quantity'];
+                    $price = (float) $package->price;
+                    $subtotal = $price * $quantity;
 
-        foreach ($packageItems as $packageIndex => $item) {
+                    $packageRows[] = [
+                        'package' => $package,
+                        'quantity' => $quantity,
+                        'price' => $price,
+                        'subtotal' => $subtotal,
+                    ];
 
-            $package = Package::with('details.menu')
-                ->where('status', 'Tersedia')
-                ->lockForUpdate()
-                ->findOrFail($item['package_id']);
+                    $subtotalPaket += $subtotal;
 
-            $quantity = (int) $item['quantity'];
-            $price = (float) $item['price'];
+                    foreach ($package->details as $detail) {
+                        $menuId = (int) $detail->menus_id;
+                        $needed = (int) $detail->quantity * $quantity;
 
-            $packageRows[] = [
-                'index' => $packageIndex,
-                'package' => $package,
-                'package_id' => $package->id,
-                'quantity' => $quantity,
-                'price' => $price,
-                'subtotal' => $price * $quantity,
-            ];
+                        $requiredStock[$menuId] =
+                            ($requiredStock[$menuId] ?? 0) + $needed;
+                    }
+                }
 
-            $subtotalPaket += $price * $quantity;
+                // Kunci menu dan validasi stok gabungan.
+                $lockedMenus = Menu::whereIn(
+                    'id',
+                    array_keys($requiredStock)
+                )
+                    ->orderBy('id')
+                    ->lockForUpdate()
+                    ->get()
+                    ->keyBy('id');
 
-            foreach ($package->details as $packageDetail) {
-                $originalMenuId = (int) $packageDetail->menus_id;
+                foreach ($requiredStock as $menuId => $needed) {
+                    $menu = $lockedMenus->get($menuId);
 
-                $replacementId = $resolveReplacement(
-                    $packageIndex,
-                    $originalMenuId
-                );
+                    if (!$menu || $menu->status !== 'Tersedia') {
+                        throw new \RuntimeException(
+                            "Salah satu menu paket sudah tidak tersedia."
+                        );
+                    }
 
-                $menuId = $replacementId ?? $originalMenuId;
+                    if ($menu->stock < $needed) {
+                        throw new \RuntimeException(
+                            "Stok {$menu->name} tidak mencukupi. " .
+                            "Dibutuhkan {$needed}, tersedia {$menu->stock}."
+                        );
+                    }
+                }
 
-                $needed = (int) $packageDetail->quantity * $quantity;
+                // Hapus detail pesanan lama setelah validasi lolos.
+                OrderDetail::where('order_id', $lockedOrder->id)->delete();
 
-                $requiredStock[$menuId] =
-                    ($requiredStock[$menuId] ?? 0) + $needed;
-            }
-        }
+                OrderPackage::where(
+                    'order_id',
+                    $lockedOrder->id
+                )->delete();
 
-        // 3. Tambahkan kebutuhan stok dari menu custom/tambahan.
-        foreach ($menuItems as $item) {
-            $menuId = (int) $item['menu_id'];
-            $quantity = (int) $item['quantity'];
+                // Simpan paket dan detail menu bawaannya.
+                foreach ($packageRows as $row) {
+                    $package = $row['package'];
+                    $quantity = $row['quantity'];
 
-            $requiredStock[$menuId] =
-                ($requiredStock[$menuId] ?? 0) + $quantity;
-        }
+                    OrderPackage::create([
+                        'order_id' => $lockedOrder->id,
+                        'package_id' => $package->id,
+                        'quantity' => $quantity,
+                        'price' => $row['price'],
+                        'subtotal' => $row['subtotal'],
+                    ]);
 
-        // 4. Kunci dan validasi stok gabungan.
-        $lockedMenus = [];
+                    foreach ($package->details as $detail) {
+                        $menuId = (int) $detail->menus_id;
+                        $menu = $lockedMenus->get($menuId);
+                        $componentQuantity =
+                            (int) $detail->quantity * $quantity;
 
-        foreach ($requiredStock as $menuId => $quantity) {
-            $menu = Menu::whereKey($menuId)
-                ->lockForUpdate()
-                ->firstOrFail();
+                        OrderDetail::create([
+                            'order_id' => $lockedOrder->id,
+                            'menu_id' => $menu->id,
+                            'quantity' => $componentQuantity,
+                            'price' => $menu->price,
+                            'subtotal' =>
+                                (float) $menu->price * $componentQuantity,
+                            'source' => 'package',
+                        ]);
+                    }
+                }
 
-            if ($menu->status !== 'Tersedia') {
-                throw new \RuntimeException(
-                    "Menu {$menu->name} sudah tidak tersedia."
-                );
-            }
-
-            if ($menu->stock < $quantity) {
-                throw new \RuntimeException(
-                    "Stok menu {$menu->name} tidak mencukupi. " .
-                    "Dibutuhkan {$quantity}, tersedia {$menu->stock}."
-                );
-            }
-
-            $lockedMenus[$menuId] = $menu;
-        }
-
-        // 5. Hitung menu custom. Harga komponen pengganti tidak ditambahkan
-        // lagi ke total, karena sudah termasuk harga paket.
-        $subtotalMenu = 0;
-        $menuRows = [];
-
-        foreach ($menuItems as $item) {
-            $menu = $lockedMenus[(int) $item['menu_id']];
-            $quantity = (int) $item['quantity'];
-            $price = (float) $menu->price;
-
-            $menuRows[] = [
-                'menu' => $menu,
-                'quantity' => $quantity,
-                'price' => $price,
-                'subtotal' => $price * $quantity,
-            ];
-
-            $subtotalMenu += $price * $quantity;
-        }
-
-        // 6. Simpan kembali daftar paket.
-        OrderPackage::where('order_id', $lockedOrder->id)->delete();
-
-        foreach ($packageRows as $row) {
-            OrderPackage::create([
-                'order_id' => $lockedOrder->id,
-                'package_id' => $row['package_id'],
-                'quantity' => $row['quantity'],
-                'price' => $row['price'],
-                'subtotal' => $row['subtotal'],
-            ]);
-        }
-
-        
-
-
-        // 7. Buat ulang detail komponen paket dan menu custom.
-        OrderDetail::where('order_id', $lockedOrder->id)
-            ->whereIn('source', ['package', 'custom'])
-            ->delete();
-
-        // Simpan komponen paket beserta menu penggantinya.
-        foreach ($packageRows as $row) {
-            foreach ($row['package']->details as $packageDetail) {
-
-                // Ambil ID menu bawaan dari komponen paket.
-                $originalMenuId = (int) $packageDetail->menus_id;
-
-                // Ambil menu pengganti berdasarkan indeks paket DAN menu bawaan.
-                $replacementId = $resolveReplacement(
-                    $row['index'],
-                    $originalMenuId
-                );
-
-                // Jika tidak diganti, gunakan menu bawaan.
-                $menuId = $replacementId ?? $originalMenuId;
-
-                if (!isset($lockedMenus[$menuId])) {
-                    throw new \RuntimeException(
-                        "Menu ID {$menuId} tidak ditemukan dalam validasi stok."
+                // Kurangi stok sesuai seluruh paket yang baru dipilih.
+                foreach ($requiredStock as $menuId => $needed) {
+                    $lockedMenus->get($menuId)->decrement(
+                        'stock',
+                        $needed
                     );
                 }
 
-                $menu = $lockedMenus[$menuId];
+                $deliveryFee = (float) ($lockedOrder->delivery_fee ?? 0);
 
-                $quantity = (int) $packageDetail->quantity
-                    * (int) $row['quantity'];
-
-                OrderDetail::create([
-                    'order_id' => $lockedOrder->id,
-                    'menu_id' => $menu->id,
-                    'quantity' => $quantity,
-                    'price' => $menu->price,
-                    'subtotal' => $menu->price * $quantity,
-                    'source' => 'package',
+                $lockedOrder->update([
+                    'order_date' => $validated['order_date'],
+                    'delivery_date' => $validated['delivery_date'],
+                    'status' => $newStatus,
+                    'notes' => $validated['notes'] ?? null,
+                    'total' => $subtotalPaket + $deliveryFee,
                 ]);
-            }
-        }
-
-        // Simpan menu tambahan secara terpisah.
-        foreach ($menuRows as $row) {
-            OrderDetail::create([
-                'order_id' => $lockedOrder->id,
-                'menu_id' => $row['menu']->id,
-                'quantity' => $row['quantity'],
-                'price' => $row['price'],
-                'subtotal' => $row['subtotal'],
-                'source' => 'custom',
-            ]);
-        }
-
-        // 9. Kurangi stok berdasarkan semua komponen paket dan menu custom.
-        foreach ($requiredStock as $menuId => $quantity) {
-            $lockedMenus[$menuId]->decrement('stock', $quantity);
-        }
-    
-        // 10. Hitung total pesanan terbaru.
-       // Pertahankan ongkir yang sudah diatur dari halaman detail pesanan.
-            $deliveryFee = (float) ($lockedOrder->delivery_fee ?? 0);
-
-            $total = $subtotalPaket + $subtotalMenu + $deliveryFee;
-
-            // Status pesanan diatur melalui form edit pesanan,
-            // bukan ditentukan dari nominal pembayaran.
-            $lockedOrder->update([
-                'customer_id' => $validated['customer_id'],
-                'order_type' => $validated['order_type'],
-                'order_date' => $validated['order_date'],
-                'delivery_date' => $validated['delivery_date'],
-                'status' => $validated['status'],
-                'notes' => $validated['notes'] ?? null,
-                'total' => $total,
-            ]);
-        });
+            });
+            
 
             return redirect()
                 ->route('orders.show', $order->id)

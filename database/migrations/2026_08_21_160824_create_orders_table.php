@@ -21,7 +21,8 @@ return new class extends Migration
                 'Pending',
                 'Diproses',
                 'Selesai',
-                'Dibatalkan'
+                'Dibatalkan',
+                'Siap_diambil_atau_diantar'
             ])->default('Pending');
 
             $table->decimal('total', 15 , 2)->default(0);

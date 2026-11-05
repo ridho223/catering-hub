@@ -9,87 +9,89 @@ use Illuminate\Support\Facades\Storage;
 
 class PackageController extends Controller
 {
-    /**
-     * Display a listing of the resource.
-     */
-    public function index()
+    // ADMIN: semua jenis paket dalam satu halaman
+    public function index(Request $request)
     {
-        $packages = Package::with('details.menu')
-            ->latest()
-            ->get();
+        $type = $request->query('type', 'semua');
 
-        return view('packages.index',compact('packages'));
+        $query = Package::with('details.menu')
+            ->latest();
+
+        if (in_array($type, ['paket', 'prasmanan'], true)) {
+            $query->where('package_type', $type);
+        } else {
+            $type = 'semua';
+        }
+
+        $packages = $query->get();
+
+        return view('packages.index', compact('packages', 'type'));
     }
 
-    /**
-     * Show the form for creating a new resource.
-     */
     public function create()
     {
-        $menus = Menu::where('status','Tersedia')
+        $menus = Menu::with('category')
+            ->where('status', 'Tersedia')
             ->orderBy('name')
-            ->get();
+            ->get()
+            ->groupBy(fn ($menu) => $menu->category?->name ?? 'Tanpa Kategori');
 
         return view('packages.create', compact('menus'));
     }
 
-    /**
-     * Store a newly created resource in storage.
-     */
     public function store(Request $request)
     {
         $validated = $request->validate([
             'name' => 'required|string|max:255',
+            'package_type' => 'required|in:paket,prasmanan',
             'description' => 'nullable|string',
             'price' => 'required|numeric|min:0',
             'status' => 'required|in:Tersedia,Tidak Tersedia',
             'image' => 'nullable|image|mimes:jpg,png,jpeg,webp|max:2048',
             'menus' => 'required|array|min:1',
-            'menus.*' => 'exists:menus,id',
+            'menus.*' => 'required|exists:menus,id',
         ]);
 
-        $image = null;
-
-        if($request->hasFile('image')){
-            $image = $request->file('image')->store('packages','public');
-        }
+        $image = $request->hasFile('image')
+            ? $request->file('image')->store('packages', 'public')
+            : null;
 
         $package = Package::create([
             'name' => $validated['name'],
-            'description' => $validated['description'],
+            'package_type' => $validated['package_type'],
+            'description' => $validated['description'] ?? null,
             'price' => $validated['price'],
             'image' => $image,
             'status' => $validated['status'],
         ]);
 
-        foreach ($validated['menus'] as $menuId){
+        foreach ($validated['menus'] as $menuId) {
             $package->details()->create([
                 'menus_id' => $menuId,
                 'quantity' => 1,
             ]);
         }
 
-        return redirect()->route('packages.index')->with('success','Paket berhasil ditambahkan');
+        return redirect()
+            ->route('packages.index')
+            ->with('success', 'Paket berhasil ditambahkan.');
     }
 
-    /**
-     * Display the specified resource.
-     */
     public function show(Package $package)
     {
         $package->load('details.menu');
 
-        return view('packages.show',compact('package'));
+        return view('packages.show', compact('package'));
     }
 
-    /**
-     * Show the form for editing the specified resource.
-     */
     public function edit(Package $package)
     {
         $package->load('details');
 
-        $menus = Menu::orderBy('name')->get();
+        $menus = Menu::with('category')
+            ->orderBy('name')
+            ->get()
+            ->groupBy(fn ($menu) => $menu->category?->name ?? 'Tanpa Kategori');
 
         $selectedMenus = $package->details
             ->pluck('menus_id')
@@ -98,95 +100,123 @@ class PackageController extends Controller
         return view('packages.edit', compact(
             'package',
             'menus',
-            'selectedMenus'        
+            'selectedMenus'
         ));
-
     }
 
-    /**
-     * Update the specified resource in storage.
-     */
     public function update(Request $request, Package $package)
     {
         $validated = $request->validate([
             'name' => 'required|string|max:255',
+            'package_type' => 'required|in:paket,prasmanan',
             'description' => 'nullable|string',
             'price' => 'required|numeric|min:0',
             'status' => 'required|in:Tersedia,Tidak Tersedia',
             'image' => 'nullable|image|mimes:jpg,jpeg,png,webp|max:2048',
             'menus' => 'required|array|min:1',
-            'menus.*' => 'exists:menus,id',
+            'menus.*' => 'required|exists:menus,id',
         ]);
 
         $package->name = $validated['name'];
+        $package->package_type = $validated['package_type'];
         $package->description = $validated['description'] ?? null;
         $package->price = $validated['price'];
         $package->status = $validated['status'];
 
-        if($request->hasFile('image')){
-
-            if(
+        if ($request->hasFile('image')) {
+            if (
                 $package->image &&
                 Storage::disk('public')->exists($package->image)
-            ){
+            ) {
                 Storage::disk('public')->delete($package->image);
             }
 
-            $package->image = $request->file('image')->store('packages', 'public');
+            $package->image = $request->file('image')
+                ->store('packages', 'public');
         }
 
         $package->save();
 
-        // Hapus paket lama
         $package->details()->delete();
 
-        // Masukan isi paket baru
-        foreach($validated['menus'] as $menuId){
+        foreach ($validated['menus'] as $menuId) {
             $package->details()->create([
                 'menus_id' => $menuId,
                 'quantity' => 1,
             ]);
         }
 
-        return redirect()->route('packages.index')->with('success','Paket berhasil diperbarui');
+        return redirect()
+            ->route('packages.index')
+            ->with('success', 'Paket berhasil diperbarui.');
     }
 
-    /**
-     * Remove the specified resource from storage.
-     */
     public function destroy(Package $package)
     {
-        if(
+        if (
             $package->image &&
             Storage::disk('public')->exists($package->image)
-        ){
+        ) {
             Storage::disk('public')->delete($package->image);
         }
 
         $package->details()->delete();
         $package->delete();
 
-        return redirect()->route('packages.index')->with('success','Paket berhasil dihapus');
+        return redirect()
+            ->route('packages.index')
+            ->with('success', 'Paket berhasil dihapus.');
     }
 
+    // CUSTOMER: daftar paket catering biasa
     public function customerIndex()
     {
         $packages = Package::with('details.menu')
-            ->where('status','Tersedia')
+            ->where('package_type', 'paket')
+            ->where('status', 'Tersedia')
             ->latest()
             ->get();
 
-        return view('packages.customer.index',compact('packages'));
+        return view('packages.customer.index', compact('packages'));
     }
 
+    // CUSTOMER: daftar paket prasmanan
+    public function customerPrasmananIndex()
+    {
+        $packages = Package::with('details.menu')
+            ->where('package_type', 'prasmanan')
+            ->where('status', 'Tersedia')
+            ->latest()
+            ->get();
+
+        return view('packages.customer.prasmanan', compact('packages'));
+    }
+
+    // CUSTOMER: detail paket catering biasa
     public function customerShow(Package $package)
     {
-        if($package->status !== 'Tersedia'){
-            abort(404);
-        }
+        abort_unless(
+            $package->status === 'Tersedia'
+            && $package->package_type === 'paket',
+            404
+        );
 
-        $package->load('details.menu');
+        $package->load('details.menu.category');
 
-        return view('packages.customer.show',compact('package'));
+        return view('packages.customer.show', compact('package'));
+    }
+
+    // CUSTOMER: detail paket prasmanan
+    public function customerPrasmananShow(Package $package)
+    {
+        abort_unless(
+            $package->status === 'Tersedia'
+            && $package->package_type === 'prasmanan',
+            404
+        );
+
+        $package->load('details.menu.category');
+
+        return view('packages.customer.show', compact('package'));
     }
 }

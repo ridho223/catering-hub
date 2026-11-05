@@ -25,29 +25,28 @@ class CustomerOrderController extends Controller
     public function show(string $order)
     {
         $account = Auth::guard('customer')->user();
-
         $customer = $account->customer;
 
-        
-        $order = $customer->orders()->with([
-            'customer',
-            'packages.package.details.menu',
-            'details.menu',
-            'payment',      
-        ])->findOrFail($order);
+        abort_if(!$customer, 404);
 
-        // Paket catering selalu dihitung.
-        if($order->packages->isNotEmpty()){
-            $subtotalPaket = $order->packages->sum('subtotal');
+        $order = $customer->orders()
+            ->with([
+                'customer',
+                'packages.package.details.menu',
+                'details.menu',
+                'payment',
+            ])
+            ->findOrFail($order);
 
-            $subtotalCustom = $order->details->where('source', 'custom')->sum('subtotal');
+        // Jika pesanan memakai paket, gunakan subtotal paket.
+        // Jika pesanan lama tidak memiliki data paket, gunakan detail menu.
+        $subtotalPesanan = $order->packages->isNotEmpty()
+            ? $order->packages->sum('subtotal')
+            : $order->details->sum('subtotal');
 
-            $subtotalPesanan = $subtotalPaket + $subtotalCustom;
-        }else{
-            $subtotalPesanan = $order->details->sum('subtotal');
-        }
-
-
-        return view('customer.orders.show', compact('order', 'subtotalPesanan'));
+        return view(
+            'customer.orders.show',
+            compact('order', 'subtotalPesanan')
+        );
     }
 }
