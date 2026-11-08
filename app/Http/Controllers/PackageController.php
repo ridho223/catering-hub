@@ -45,7 +45,7 @@ class PackageController extends Controller
             'name' => 'required|string|max:255',
             'package_type' => 'required|in:paket,prasmanan',
             'description' => 'nullable|string',
-            'price' => 'required|numeric|min:0',
+            'price' => 'required|numeric|min:1',
             'status' => 'required|in:Tersedia,Tidak Tersedia',
             'image' => 'nullable|image|mimes:jpg,png,jpeg,webp|max:2048',
             'menus' => 'required|array|min:1',
@@ -110,7 +110,7 @@ class PackageController extends Controller
             'name' => 'required|string|max:255',
             'package_type' => 'required|in:paket,prasmanan',
             'description' => 'nullable|string',
-            'price' => 'required|numeric|min:0',
+            'price' => 'required|numeric|min:1',
             'status' => 'required|in:Tersedia,Tidak Tersedia',
             'image' => 'nullable|image|mimes:jpg,jpeg,png,webp|max:2048',
             'menus' => 'required|array|min:1',
@@ -153,6 +153,13 @@ class PackageController extends Controller
 
     public function destroy(Package $package)
     {
+        // Paket yang pernah dipesan tidak boleh dihapus (riwayat pesanan ikut rusak).
+        if (\App\Models\OrderPackage::where('package_id', $package->id)->exists()) {
+            return redirect()
+                ->route('packages.index')
+                ->with('error', 'Paket ini pernah dipesan sehingga tidak bisa dihapus. Ubah statusnya menjadi Tidak Tersedia jika sudah tidak dijual.');
+        }
+
         if (
             $package->image &&
             Storage::disk('public')->exists($package->image)

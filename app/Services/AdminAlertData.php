@@ -34,7 +34,6 @@ class AdminAlertData
                 ])->values()->all();
         } catch (\Throwable $e) {
             report($e);
-             dd($e->getMessage(), $e->getFile(), $e->getLine());
         }
 
         return $data;

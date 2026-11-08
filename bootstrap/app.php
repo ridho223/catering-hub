@@ -30,7 +30,10 @@ return Application::configure(basePath: dirname(__DIR__))
 
                 $middleware->alias([
                 'superadmin' => \App\Http\Middleware\SuperadminMiddleware::class,
-                ]);                 
+                'customer.verified' => \App\Http\Middleware\EnsureCustomerEmailVerified::class,
+                ]);
+
+                $middleware->append(\App\Http\Middleware\SecurityHeaders::class);                 
     })
     ->withExceptions(function (Exceptions $exceptions): void {
 

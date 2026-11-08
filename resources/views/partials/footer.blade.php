@@ -2,13 +2,14 @@
     $kedai = [
         'name'      => 'Kedai BangJo',
         'tagline'   => 'Layanan catering untuk kebutuhan rumah, kantor, acara, dan berbagai kebutuhan lainnya.',
-        'phone'     => '0812-3456-7890',
-        'whatsapp'  => '6281234567890',
+        'phone'     => '0819-4491-2922',
+        'whatsapp'  => '6281944912922',
         'email'     => 'info@kedaibangjo.com',
         'instagram' => 'kedaibangjo', // GANTI dengan username Instagram asli (tanpa @)
         'address'   => 'Jl. Kauman I, Turen, Kec. Turen, Kabupaten Malang, Jawa Timur 65175',
+        'map_query' => 'Catering "Kedai BangJo", Jl. Kauman I, Turen, Malang Regency, East Java 65175',
     ];
-    $mapsUrl = 'https://www.google.com/maps/search/?api=1&query=' . urlencode($kedai['address']);
+    $mapsUrl = 'https://www.google.com/maps/search/?api=1&query=' . urlencode($kedai['map_query']);
     $waUrl   = 'https://wa.me/' . $kedai['whatsapp'];
     $igUrl   = 'https://www.instagram.com/' . $kedai['instagram'];
 

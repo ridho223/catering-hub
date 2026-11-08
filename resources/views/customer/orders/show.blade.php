@@ -411,6 +411,23 @@
                     <div class="order-code-tag">
                         <i class="bi bi-receipt text-success"></i> {{ $order->order_code }}
                     </div>
+
+                    @if ($order->status === 'Pending' && ! $order->hasActivePayment())
+                        <form action="{{ route('customer.orders.cancel', $order->id) }}" method="POST" class="mt-2"
+                            onsubmit="return confirm('Batalkan pesanan ini? Pesanan yang dibatalkan tidak bisa diaktifkan lagi.')">
+                            @csrf
+                            <button type="submit" class="btn btn-sm btn-outline-danger rounded-3 fw-bold">
+                                <i class="bi bi-x-circle me-1"></i> Batalkan Pesanan
+                            </button>
+                        </form>
+                    @endif
+                    <div class="mt-2">
+                        <a href="{{ route('customer.orders.receipt', ['order' => $order->id, 'print' => 1]) }}"
+                        target="_blank" rel="noopener"
+                        class="btn btn-sm btn-outline-success rounded-3 fw-bold">
+                            <i class="bi bi-printer me-1"></i> Cetak Struk
+                        </a>
+                    </div>
                 </div>
             </div>
         </div>

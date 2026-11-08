@@ -459,7 +459,8 @@
                                 <input type="email"
                                        id="email"
                                        name="email"
-                                       value="{{ old('email', $customer->email) }}"
+                                       value="{{ Auth::guard('customer')->user()->email }}"
+                                       readonly
                                        class="form-control @error('email') is-invalid @enderror"
                                        placeholder="nama@email.com"
                                        required>

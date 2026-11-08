@@ -4,8 +4,11 @@ namespace App\Http\Controllers;
 
 use App\Models\Category;
 use App\Models\Menu;
+use App\Models\OrderDetail;
+use App\Models\PackageDetails;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 
 class MenuController extends Controller
 {
@@ -79,17 +82,21 @@ class MenuController extends Controller
         $request->validate([
             'category_id'=> 'required|exists:categories,id',
             'name'=> 'required|string|max:255',
-            'price'=> 'required|numeric|min:0',
+            'price'=> 'required|integer|min:0',
             'stock' => 'required|integer|min:0',
-            'status' => 'required|in:Tersedia,Tidak Tersedia',
+            // harus sama dengan enum kolom menus.status dan pilihan di form
+            'status' => 'required|in:Tersedia,Habis',
+            'description' => 'nullable|string|max:1000',
             'image' => 'nullable|image|mimes:jpg,jpeg,png|max:2048',
+        ], [
+            'price.integer' => 'Harga harus berupa angka bulat (tanpa titik/koma).',
         ]);
 
         $imageName = null;
 
         if($request->hasFile('image')){
-            $imageName = time().'.'.$request->image->extension();
-            $request->image->move(public_path('uploads/menu'),$imageName);
+            $imageName = $this->makeImageName($request->file('image'));
+            $request->file('image')->move(public_path('uploads/menu'),$imageName);
         }
 
         Menu::create([
@@ -129,15 +136,19 @@ class MenuController extends Controller
     public function update(Request $request, Menu $menu)
     {
         $request->validate([
-            'name'=>'required',
-            'category_id'=>'required',
-            'price'=>'required|numeric',
-            'stock'=>'required|numeric',
-            'status'=>'required',
-            'image'=>'nullable|image|mimes:jpg,jpeg,png|max:2048'        
+            'name'=>'required|string|max:255',
+            'category_id'=>'required|exists:categories,id',
+            'price'=>'required|integer|min:0',
+            'stock'=>'required|integer|min:0',
+            'status'=>'required|in:Tersedia,Habis',
+            'description'=>'nullable|string|max:1000',
+            'image'=>'nullable|image|mimes:jpg,jpeg,png|max:2048'
+        ], [
+            'price.integer' => 'Harga harus berupa angka bulat (tanpa titik/koma).',
         ]);
 
-        $data = $request->except('image');
+        // Hanya kolom yang memang boleh diubah (bukan seluruh isi request).
+        $data = $request->only(['name', 'category_id', 'price', 'stock', 'status', 'description']);
 
         if($request->hasFile('image')){
              if($menu->image && file_exists(public_path('uploads/menu/' . $menu->image))){
@@ -145,7 +156,7 @@ class MenuController extends Controller
              }
 
              $image = $request->file('image');
-             $imageName = time() . '_' . $image->getClientOriginalName();
+             $imageName = $this->makeImageName($image);
              $image->move(public_path('uploads/menu'), $imageName);
 
              $data['image'] = $imageName;
@@ -163,6 +174,16 @@ class MenuController extends Controller
      */
     public function destroy(Menu $menu)
     {
+        // Menu yang pernah dipesan atau masih jadi isi paket tidak boleh dihapus:
+        // riwayat pesanan dan isi paket ikut rusak. Ubah status jadi Habis saja.
+        if (OrderDetail::where('menu_id', $menu->id)->exists()) {
+            return back()->with('error', 'Menu ini pernah dipesan sehingga tidak bisa dihapus (riwayat pesanan akan rusak). Ubah status menjadi Habis jika sudah tidak dijual.');
+        }
+
+        if (PackageDetails::where('menus_id', $menu->id)->exists()) {
+            return back()->with('error', 'Menu ini masih menjadi isi paket. Keluarkan dari paket dulu sebelum dihapus.');
+        }
+
         if($menu->image && file_exists(public_path('uploads/menu/' . $menu->image))){
             unlink(public_path('uploads/menu/' . $menu->image));
         }
@@ -174,4 +195,9 @@ class MenuController extends Controller
     }
 
 
+    // Nama file acak dari ekstensi hasil deteksi isi file (bukan nama dari pengguna).
+    private function makeImageName($file): string
+    {
+        return time() . '_' . Str::random(8) . '.' . $file->extension();
+    }
 }

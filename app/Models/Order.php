@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\DB;
 
 class Order extends Model
 {
@@ -93,6 +94,51 @@ class Order extends Model
         if ($this->payments->sortByDesc('id')->first()?->status === 'Ditolak') return 'Ditolak';
         if ($this->paidAmount() > 0)    return 'Sebagian';
         return 'Belum Dibayar';
+    }
+
+    // Ada pembayaran yang sudah dibayar atau sedang menunggu verifikasi?
+    public function hasActivePayment(): bool
+    {
+        return $this->payments()
+            ->whereIn('status', ['Dibayar', 'Menunggu Verifikasi'])
+            ->exists();
+    }
+
+    // Item/ongkir/total tidak boleh diubah lagi.
+    public function isLocked(): bool
+    {
+        return in_array($this->status, ['Selesai', 'Dibatalkan'], true) || $this->hasActivePayment();
+    }
+
+    /**
+     * Batalkan pesanan dan kembalikan stok menu. Aman dipanggil berulang:
+     * pesanan yang sudah Selesai/Dibatalkan tidak diproses lagi (stok tidak ganda).
+     */
+    public function cancelAndRestock(): bool
+    {
+        return DB::transaction(function () {
+            $order = static::whereKey($this->id)->lockForUpdate()->first();
+
+            if (! $order || in_array($order->status, ['Selesai', 'Dibatalkan'], true)) {
+                return false;
+            }
+
+            foreach (OrderDetail::where('order_id', $order->id)->get() as $detail) {
+                $menu = Menu::whereKey($detail->menu_id)->lockForUpdate()->first();
+
+                if ($menu) {
+                    $menu->increment('stock', $detail->quantity);
+                }
+            }
+
+            Payment::where('order_id', $order->id)
+                ->where('status', 'Menunggu Verifikasi')
+                ->update(['status' => 'Ditolak', 'notes' => 'Pesanan dibatalkan', 'paid_at' => null]);
+
+            $order->update(['status' => 'Dibatalkan']);
+
+            return true;
+        });
     }
 
     public function pendingAmount(): float

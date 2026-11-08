@@ -6,3 +6,6 @@ use Illuminate\Support\Facades\Artisan;
 Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
+
+// Batalkan otomatis pesanan Pending yang tidak dibayar (butuh cron: * * * * * php artisan schedule:run)
+\Illuminate\Support\Facades\Schedule::command('orders:expire-pending')->hourly();

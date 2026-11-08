@@ -102,7 +102,7 @@ class DashboardController extends Controller
             ->groupBy('status')->get();
 
         $methodBreakdown = Payment::where('status', 'Dibayar')
-            ->whereBetween('created_at', [$from->copy()->startOfDay(), $to->copy()->endOfDay()])
+            ->whereBetween(DB::raw('COALESCE(paid_at, created_at)'), [$from->copy()->startOfDay(), $to->copy()->endOfDay()])
             ->select('method', DB::raw('COUNT(*) as c'), DB::raw('SUM(amount) as t'))
             ->groupBy('method')->get();
 
@@ -144,30 +144,32 @@ class DashboardController extends Controller
     {
         [$from, $to] = $this->period($request);
 
-        $rows = Order::with(['customer', 'payment'])
+        $rows = Order::with(['customer', 'payments'])
             ->whereBetween('order_date', [$from->toDateString(), $to->toDateString()])
             ->orderBy('order_date')->orderBy('id')->get();
 
         $filename = 'laporan-pesanan-' . $from->format('Ymd') . '-' . $to->format('Ymd') . '.csv';
 
-        return response()->streamDownload(function () use ($rows) {
+        // Nilai teks yang diawali = + - @ dianggap rumus oleh Excel (CSV injection); beri awalan '.
+        $safe = fn ($v) => preg_match('/^[=+\-@\t\r]/', (string) $v) ? "'" . $v : $v;
+
+        return response()->streamDownload(function () use ($rows, $safe) {
             $out = fopen('php://output', 'w');
             fwrite($out, "\xEF\xBB\xBF"); // BOM agar Excel membaca UTF-8 dengan benar
 
-            fputcsv($out, ['Kode', 'Tanggal Pesanan', 'Tanggal Kirim/Ambil', 'Pelanggan', 'Total', 'Status Pesanan', 'Status Pembayaran', 'Dibayar']);
+            fputcsv($out, ['Kode', 'Tanggal Pesanan', 'Tanggal Kirim/Ambil', 'Pelanggan', 'Total', 'Status Pesanan', 'Status Pembayaran', 'Dibayar', 'Sisa Tagihan']);
 
             foreach ($rows as $o) {
                 fputcsv($out, [
-                    $o->order_code ?? $o->id,
+                    $safe($o->order_code ?? $o->id),
                     Carbon::parse($o->order_date)->format('Y-m-d'),
                     Carbon::parse($o->delivery_date)->format('Y-m-d'),
-                    $o->customer?->name ?? '-',
+                    $safe($o->customer?->name ?? '-'),
                     (float) $o->total,
-                    $o->status,
-                    $o->payment?->status ?? 'Belum Dibayar',
-                    $o->paymentState(),
+                    $safe($o->status),
+                    $safe($o->paymentState()),
                     (float) $o->paidAmount(),
-                    (float) ($o->payment?->status === 'Dibayar' ? $o->payment->amount : 0),
+                    (float) $o->remainingAmount(),
                 ]);
             }
 
@@ -206,7 +208,7 @@ class DashboardController extends Controller
     private function revenueBetween(Carbon $from, Carbon $to): float
     {
         return (float) Payment::where('status', 'Dibayar')
-            ->whereBetween('created_at', [$from->copy()->startOfDay(), $to->copy()->endOfDay()])
+            ->whereBetween(DB::raw('COALESCE(paid_at, created_at)'), [$from->copy()->startOfDay(), $to->copy()->endOfDay()])
             ->sum('amount');
     }
 
@@ -214,8 +216,8 @@ class DashboardController extends Controller
     private function revenueByDay(Carbon $from, Carbon $to): Collection
     {
         return Payment::where('status', 'Dibayar')
-            ->whereBetween('created_at', [$from->copy()->startOfDay(), $to->copy()->endOfDay()])
-            ->selectRaw('DATE(created_at) as d, SUM(amount) as total')
+            ->whereBetween(DB::raw('COALESCE(paid_at, created_at)'), [$from->copy()->startOfDay(), $to->copy()->endOfDay()])
+            ->selectRaw('DATE(COALESCE(paid_at, created_at)) as d, SUM(amount) as total')
             ->groupBy('d')
             ->pluck('total', 'd');
     }

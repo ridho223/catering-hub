@@ -3,669 +3,392 @@
 @section('title', 'Pesanan Berhasil')
 
 @section('content')
-
 @php
-    $adaBukti    = $order->payments->isNotEmpty();
-    $statusBayar = $order->paymentState();
-    $menunggu    = $order->pendingAmount();
-    $belumBayar  = max(0, $order->remainingAmount() - $menunggu);
-    $bisaBayar   = $order->delivery_method === 'pickup' || $order->delivery_distance !== null;
+    $isDelivery = $order->delivery_method === 'delivery';
+    $ongkirOk   = !$isDelivery || $order->delivery_distance !== null;
+
+    $total         = (float) $order->total;
+    $terverifikasi = $order->paidAmount();
+    $menunggu      = $order->pendingAmount();
+    $belumBayar    = max(0, $order->remainingAmount() - $menunggu);
+    $lunas         = $order->isFullyPaid();
+    $adaBukti      = $order->payments->isNotEmpty();
+    $pctPaid       = $total > 0 ? min(100, round($terverifikasi / $total * 100, 1)) : 0;
+    $pctPending    = $total > 0 ? min(100 - $pctPaid, round($menunggu / $total * 100, 1)) : 0;
+
+    // ---- status pesanan dalam bahasa pelanggan ----
+    $st = strtolower(trim((string) $order->status));
+
+    $tahap = match (true) {
+        $st === 'selesai'            => 4,
+        str_starts_with($st, 'siap') => 3,
+        $st === 'diproses'           => 2,
+        $st === 'pending'            => 1,
+        default                      => 0,
+    };
+
+    if ($st === 'dibatalkan') {
+        [$stJudul, $stKet, $stIkon, $stWarna] = ['Pesanan dibatalkan', 'Pesanan ini tidak dilanjutkan.', 'bi-x-circle-fill', 'danger'];
+    } elseif ($tahap === 4) {
+        [$stJudul, $stKet, $stIkon, $stWarna] = ['Pesanan selesai', 'Terima kasih telah memesan di Kedai BangJo.', 'bi-check-circle-fill', 'success'];
+    } elseif ($tahap === 3) {
+        [$stJudul, $stKet, $stIkon, $stWarna] = $isDelivery
+            ? ['Siap diantar', 'Pesananmu sedang menuju alamat tujuan.', 'bi-truck', 'success']
+            : ['Siap diambil', 'Silakan ambil pesananmu di Kedai BangJo.', 'bi-shop', 'success'];
+    } elseif ($tahap === 2) {
+        [$stJudul, $stKet, $stIkon, $stWarna] = ['Sedang diproses', 'Admin sedang menyiapkan pesananmu.', 'bi-gear-fill', 'primary'];
+    } elseif ($isDelivery && !$ongkirOk) {
+        [$stJudul, $stKet, $stIkon, $stWarna] = ['Menunggu konfirmasi ongkir', 'Admin akan menghitung jarak dan ongkir, lalu kamu bisa membayar.', 'bi-truck', 'warning'];
+    } elseif ($menunggu > 0) {
+        [$stJudul, $stKet, $stIkon, $stWarna] = ['Menunggu verifikasi pembayaran', 'Admin sedang memeriksa bukti pembayaranmu.', 'bi-hourglass-split', 'warning'];
+    } else {
+        [$stJudul, $stKet, $stIkon, $stWarna] = ['Menunggu pembayaran', 'Selesaikan pembayaran agar pesanan mulai diproses.', 'bi-wallet2', 'warning'];
+    }
+
+    $langkah = [1 => 'Dipesan', 2 => 'Diproses', 3 => $isDelivery ? 'Diantar' : 'Siap diambil', 4 => 'Selesai'];
+
+    // ---- item & biaya ----
+    $extras       = $order->details->where('source', 'custom');
+    $komponen     = $order->details->where('source', 'package');
+    $subtotalItem = (float) $order->packages->sum('subtotal') + (float) $extras->sum('subtotal');
+
+    $ongkirText = !$isDelivery
+        ? 'Gratis (ambil sendiri)'
+        : (!$ongkirOk
+            ? 'Menunggu konfirmasi admin'
+            : ((float) $order->delivery_fee > 0
+                ? 'Rp' . number_format($order->delivery_fee, 0, ',', '.')
+                : 'Gratis'));
+
+    $payChip  = ['Dibayar' => 'ok', 'Menunggu Verifikasi' => 'warn', 'Ditolak' => 'bad'];
+    $payLabel = ['Dibayar' => 'Terverifikasi', 'Menunggu Verifikasi' => 'Menunggu', 'Ditolak' => 'Ditolak'];
+    $rp       = fn ($v) => 'Rp' . number_format((float) $v, 0, ',', '.');
 @endphp
 
 <style>
-    :root {
-        --suc-primary: #198754;
-        --suc-primary-dark: #145c38;
-        --suc-primary-light: #eaf5ed;
-        --suc-text: #212529;
-        --suc-muted: #6c757d;
-        --suc-border: #e2e8e3;
-        --suc-bg: #f8faf8;
-        --suc-card-bg: #ffffff;
-    }
+    .sx { --g:#198754; --gd:#145c38; --gl:#eaf5ed; --ink:#1f2a24; --mute:#6b7770; --line:#e2e8e3; background:#f8faf8; min-height:85vh; padding:24px 0 60px; color:var(--ink); }
+    .sx a { text-decoration:none; }
 
-    .success-page {
-        background-color: var(--suc-bg);
-        min-height: 85vh;
-        padding: 24px 0 60px;
-        color: var(--suc-text);
-    }
+    /* hero (rata tengah) */
+    .sx-hero { background:linear-gradient(180deg,#eaf5ed 0%,#fff 100%); border:1px solid var(--line); border-radius:20px; padding:28px 24px 24px; text-align:center; margin-bottom:16px; }
+    .sx-check { width:72px; height:72px; margin:0 auto 14px; border-radius:50%; background:var(--g); color:#fff; display:grid; place-items:center; font-size:2.1rem; box-shadow:0 0 0 8px rgba(25,135,84,.12), 0 0 0 16px rgba(25,135,84,.06); }
+    .sx-badge { display:inline-block; font-size:.7rem; font-weight:800; letter-spacing:1.2px; color:var(--gd); background:var(--gl); padding:4px 10px; border-radius:999px; }
+    .sx-hero h1 { margin:.6rem 0 .25rem; font-size:1.6rem; font-weight:900; }
+    .sx-hero p { margin:0 auto; max-width:520px; color:var(--mute); font-size:.92rem; }
+    .sx-code { display:inline-flex; align-items:center; gap:.6rem; margin-top:16px; background:#fff; border:1px dashed #9cc7ad; border-radius:12px; padding:.45rem .5rem .45rem .9rem; }
+    .sx-code .lbl { font-size:.66rem; font-weight:800; letter-spacing:1px; color:var(--mute); }
+    .sx-code b { font-family:monospace; font-size:1rem; color:var(--gd); }
+    .sx-copy { border:0; background:var(--gl); color:var(--gd); width:32px; height:32px; border-radius:9px; }
+    .sx-copy:hover { background:#d8ebd9; }
 
-    .success-page a {
-        text-decoration: none;
-    }
+    /* tiga ringkasan sama lebar */
+    .sx-stats { display:grid; grid-template-columns:repeat(3, 1fr); gap:12px; }
+    .sx-stat { background:#fff; border:1px solid var(--line); border-radius:16px; padding:14px 16px; text-align:center; }
+    .sx-stat small { display:block; color:var(--mute); font-size:.72rem; font-weight:800; text-transform:uppercase; letter-spacing:.5px; }
+    .sx-stat strong { display:block; font-size:1.3rem; font-weight:900; margin-top:2px; }
+    .sx-stat em { display:block; font-style:normal; font-size:.72rem; color:var(--mute); margin-top:2px; }
+    .sx-stat.ok strong { color:var(--g); }
+    .sx-stat.due strong { color:#c62828; }
+    .sx-bar { display:flex; height:8px; border-radius:6px; overflow:hidden; background:#e6ece7; margin:14px 4px 16px; }
+    .sx-bar i { display:block; height:100%; }
+    .sx-bar .a { background:var(--gd); }
+    .sx-bar .b { background:#f0ad00; }
 
-    /* Top Hero Banner Screen Konsisten dengan Halaman Lain */
-    .success-hero-card {
-        background: linear-gradient(135deg, #eaf5ed 0%, #ffffff 100%);
-        border: 1px solid var(--suc-border);
-        border-radius: 16px;
-        padding: 20px 24px;
-        position: relative;
-        overflow: hidden;
-        margin-bottom: 18px;
-    }
+    /* kartu sama tinggi */
+    .sx-card { background:#fff; border:1px solid var(--line); border-radius:16px; padding:16px 18px; height:100%; }
+    .sx-card h2 { display:flex; align-items:center; gap:.5rem; margin:0 0 12px; padding-bottom:10px; border-bottom:1px dashed var(--line); font-size:.95rem; font-weight:850; }
+    .sx-card h2 i { color:var(--g); }
 
-    .success-hero-card h1 {
-        color: var(--suc-text) !important;
-    }
+    .sx-state { display:flex; align-items:center; gap:12px; padding:12px; border:1px solid var(--line); border-radius:12px; background:#fbfcfb; }
+    .sx-state .ic { width:44px; height:44px; border-radius:12px; display:grid; place-items:center; font-size:1.3rem; flex:none; }
+    .sx-state .ic.success { background:#dff3e7; color:#16734a; }
+    .sx-state .ic.warning { background:#fff0d9; color:#98600d; }
+    .sx-state .ic.primary { background:#e4efff; color:#285ca6; }
+    .sx-state .ic.danger  { background:#fde8e7; color:#b52c28; }
+    .sx-state b { display:block; font-size:.95rem; }
+    .sx-state span { color:var(--mute); font-size:.8rem; }
 
-    .success-hero-card p {
-        color: var(--suc-muted) !important;
-    }
+    .sx-track { display:grid; grid-template-columns:repeat(4, 1fr); gap:6px; margin-top:14px; }
+    .sx-step { text-align:center; font-size:.7rem; font-weight:700; color:var(--mute); }
+    .sx-step i { display:grid; place-items:center; width:26px; height:26px; margin:0 auto 4px; border-radius:50%; background:#e6ede8; font-style:normal; font-size:.75rem; }
+    .sx-step.done i { background:var(--g); color:#fff; }
+    .sx-step.now i { background:var(--gd); color:#fff; box-shadow:0 0 0 4px rgba(25,135,84,.18); }
+    .sx-step.now { color:var(--gd); }
 
-    .success-check-circle {
-        width: 48px;
-        height: 48px;
-        border-radius: 50%;
-        background: var(--suc-primary-light);
-        color: var(--suc-primary);
-        display: grid;
-        place-items: center;
-        font-size: 1.5rem;
-        flex-shrink: 0;
-    }
+    .sx-chip { display:inline-block; padding:.12rem .55rem; border-radius:999px; font-size:.7rem; font-weight:800; }
+    .sx-chip.ok { background:#e3f4ea; color:#146c43; }
+    .sx-chip.warn { background:#fff1d6; color:#8a5a00; }
+    .sx-chip.bad { background:#fde8e8; color:#a52834; }
+    .sx-hist { display:flex; justify-content:space-between; align-items:center; gap:8px; padding:7px 0; border-top:1px dashed var(--line); font-size:.82rem; }
+    .sx-hist small { display:block; color:var(--mute); font-size:.7rem; }
 
-    .order-code-badge {
-        background: var(--suc-primary-light);
-        border: 1px solid var(--suc-border);
-        padding: 4px 12px;
-        border-radius: 8px;
-        font-family: monospace;
-        font-size: 1.05rem;
-        font-weight: 800;
-        letter-spacing: 0.5px;
-        display: inline-block;
-        color: var(--suc-primary-dark);
-    }
+    .sx-tiles { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+    .sx-tile { background:#fbfcfb; border:1px solid var(--line); border-radius:10px; padding:8px 12px; min-width:0; }
+    .sx-tile.full { grid-column:1 / -1; }
+    .sx-tile small { display:block; font-size:.66rem; font-weight:800; text-transform:uppercase; color:var(--mute); }
+    .sx-tile b { font-size:.85rem; overflow-wrap:anywhere; }
 
-    .success-card {
-        background: var(--suc-card-bg);
-        border: 1px solid var(--suc-border);
-        border-radius: 16px;
-        padding: 16px 18px;
-        transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
-    }
+    .sx-item { display:flex; justify-content:space-between; gap:10px; padding:8px 0; border-bottom:1px dashed var(--line); font-size:.86rem; }
+    .sx-item small { display:block; color:var(--mute); font-size:.74rem; }
+    .sx-isi { margin-top:8px; font-size:.8rem; }
+    .sx-isi summary { cursor:pointer; color:var(--gd); font-weight:700; }
+    .sx-isi ul { list-style:none; margin:6px 0 0; padding:0; }
+    .sx-isi li { display:flex; justify-content:space-between; padding:2px 0; color:var(--mute); }
+    .sx-total { background:var(--gl); border:1px solid #cde2d3; border-radius:12px; padding:10px 14px; margin-top:12px; }
+    .sx-total .row2 { display:flex; justify-content:space-between; font-size:.84rem; padding:2px 0; }
+    .sx-total .big { border-top:1px solid #cde2d3; margin-top:6px; padding-top:8px; font-weight:900; color:var(--gd); font-size:1.05rem; }
 
-    .success-card:hover {
-        border-color: #cde2d3;
-        box-shadow: 0 10px 22px rgba(20, 92, 56, 0.08);
-    }
+    /* tombol aksi sama lebar */
+    .sx-actions { display:grid; grid-template-columns:repeat(3, 1fr); gap:10px; margin-top:16px; }
+    .sx-btn { display:flex; align-items:center; justify-content:center; gap:.45rem; padding:.75rem 1rem; border-radius:12px; font-weight:800; font-size:.9rem; border:1px solid var(--line); background:#fff; color:var(--ink); transition:all .15s; }
+    .sx-btn:hover { background:var(--gl); border-color:var(--g); color:var(--gd); }
+    .sx-btn.primary { background:var(--g); border-color:var(--g); color:#fff; }
+    .sx-btn.primary:hover { background:var(--gd); color:#fff; }
 
-    .detail-grid-box {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 10px;
-    }
-
-    .detail-item {
-        background: #fbfcfb;
-        border: 1px solid var(--suc-border);
-        padding: 8px 12px;
-        border-radius: 10px;
-    }
-
-    .detail-label {
-        font-size: 0.68rem;
-        color: var(--suc-muted);
-        text-transform: uppercase;
-        font-weight: 800;
-        margin-bottom: 2px;
-    }
-
-    .detail-val {
-        font-size: 0.84rem;
-        font-weight: 750;
-        color: var(--suc-text);
-    }
-
-    /* Digital Receipt Style (Screen) Disamakan */
-    .receipt-card {
-        background: var(--suc-card-bg);
-        border: 1px solid var(--suc-border);
-        border-radius: 16px;
-        padding: 16px 18px;
-        transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
-    }
-
-    .receipt-card:hover {
-        border-color: #cde2d3;
-        box-shadow: 0 10px 22px rgba(20, 92, 56, 0.08);
-    }
-
-    .receipt-line {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        gap: 10px;
-        padding: 8px 0;
-        border-bottom: 1px dashed var(--suc-border);
-        font-size: 0.84rem;
-    }
-
-    .receipt-line:last-child {
-        border-bottom: 0;
-    }
-
-    .receipt-total-box {
-        background: var(--suc-primary-light);
-        border: 1px solid #cde2d3;
-        border-radius: 10px;
-        padding: 10px 12px;
-        margin-top: 14px;
-    }
-
-    /* Action Buttons */
-    .btn-act-primary {
-        background: var(--suc-primary);
-        border: 1px solid var(--suc-primary);
-        color: #ffffff;
-        font-weight: 800;
-        font-size: 0.88rem;
-        padding: 10px 14px;
-        border-radius: 10px;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        gap: 6px;
-        transition: all 0.2s ease;
-    }
-
-    .btn-act-primary:hover {
-        background: var(--suc-primary-dark);
-        color: #ffffff;
-    }
-
-    .btn-act-outline {
-        background: #ffffff;
-        border: 1px solid var(--suc-border);
-        color: var(--suc-text);
-        font-weight: 750;
-        font-size: 0.88rem;
-        padding: 10px 14px;
-        border-radius: 10px;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        gap: 6px;
-        cursor: pointer;
-        transition: all 0.2s ease;
-    }
-
-    .btn-act-outline:hover {
-        background: var(--suc-primary-light);
-        color: var(--suc-primary-dark);
-        border-color: var(--suc-primary);
-    }
-
-    /* Element khusus cetak disembunyikan di layar */
-    .print-only-receipt {
-        display: none;
-    }
-
-    /* ===================================================
-        CSS CETAK STRUK KHUSUS (PASTI 1 HALAMAN PAS)
-        =================================================== */
-    @media print {
-        @page {
-            size: portrait;
-            margin: 5mm;
-        }
-
-        html, body {
-            height: 100% !important;
-            overflow: hidden !important;
-            margin: 0 !important;
-            padding: 0 !important;
-            background: #ffffff !important;
-        }
-
-        /* Sembunyikan seluruh tampilan website */
-        body * {
-            visibility: hidden !important;
-        }
-
-        /* Hanya tampilkan container struk print khusus */
-        .print-only-receipt, .print-only-receipt * {
-            visibility: visible !important;
-        }
-
-        .print-only-receipt {
-            display: block !important;
-            position: absolute !important;
-            left: 0 !important;
-            top: 0 !important;
-            width: 100% !important;
-            box-sizing: border-box !important;
-            background: #ffffff !important;
-            padding: 15px !important;
-            color: #000000 !important;
-            font-family: Arial, sans-serif !important;
-        }
-
-        .print-header {
-            text-align: center;
-            border-bottom: 2px solid #000000;
-            padding-bottom: 8px;
-            margin-bottom: 10px;
-        }
-
-        .print-title {
-            font-size: 15pt;
-            font-weight: bold;
-            text-transform: uppercase;
-            margin: 0;
-        }
-
-        .print-subtitle {
-            font-size: 8.5pt;
-            margin-top: 2px;
-        }
-
-        .print-code {
-            font-size: 11pt;
-            font-weight: bold;
-            margin-top: 4px;
-            letter-spacing: 0.5px;
-        }
-
-        .print-table-info {
-            width: 100%;
-            font-size: 8.5pt;
-            margin-bottom: 8px;
-            border-collapse: collapse;
-        }
-
-        .print-table-info td {
-            padding: 2px 0;
-            vertical-align: top;
-        }
-
-        .print-divider {
-            border-top: 1px dashed #000000;
-            margin: 6px 0;
-        }
-
-        .print-items-table {
-            width: 100%;
-            font-size: 8.5pt;
-            border-collapse: collapse;
-        }
-
-        .print-items-table th {
-            border-bottom: 1px solid #000000;
-            text-align: left;
-            padding: 3px 0;
-            font-size: 8pt;
-            text-transform: uppercase;
-        }
-
-        .print-items-table td {
-            padding: 4px 0;
-            border-bottom: 1px dashed #e0e0e0;
-        }
-
-        .print-total-section {
-            margin-top: 8px;
-            border-top: 1.5px solid #000000;
-            padding-top: 6px;
-            font-size: 8.5pt;
-        }
-
-        .print-total-row {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 2px;
-        }
-
-        .print-grand-total {
-            font-size: 10.5pt;
-            font-weight: bold;
-            border-top: 1px dashed #000000;
-            padding-top: 4px;
-            margin-top: 4px;
-        }
-
-        .print-footer-note {
-            text-align: center;
-            font-size: 7.5pt;
-            margin-top: 12px;
-            border-top: 1px dashed #000000;
-            padding-top: 6px;
-        }
-    }
+    @media (max-width: 767.98px) { .sx-stats { grid-template-columns:1fr; } }
+    @media (max-width: 575.98px) { .sx-actions { grid-template-columns:1fr; } .sx-tiles { grid-template-columns:1fr; } }
 </style>
 
-<div class="success-page">
+<div class="sx">
     <div class="container" style="max-width: 960px;">
 
-        {{-- TOP HERO BANNER (LAYAR WEB) --}}
-        <div class="success-hero-card mb-3">
-            <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-3">
-                <div class="d-flex align-items-center gap-3">
-                    <div class="success-check-circle">
-                        <i class="bi bi-check-lg"></i>
-                    </div>
-                    <div>
-                        <span class="badge bg-success-subtle text-success fw-bold px-2 py-1 rounded-2 mb-1" style="font-size: 0.7rem;">
-                            {{ $adaBukti ? 'PEMBAYARAN TERKIRIM' : 'PESANAN DITERIMA' }}
-                        </span>
-                        <h1 class="fs-4 fw-black mb-1">
-                            {{ $adaBukti ? 'Pembayaran Berhasil Dikirim!' : 'Terima Kasih Atas Pesanan Anda!' }}
-                        </h1>
-                        <p class="mb-0 small">
-                            {{ $adaBukti ? 'Admin akan memverifikasi bukti pembayaranmu, lalu pesanan diproses.' : 'Pesanan berhasil dicatat. Tim kami siap memproses pesanan Anda.' }}
-                        </p>
-                    </div>
-                </div>
+        {{-- HERO --}}
+        <section class="sx-hero">
+            <div class="sx-check"><i class="bi bi-check-lg"></i></div>
+            <span class="sx-badge">{{ $adaBukti ? 'PEMBAYARAN TERKIRIM' : 'PESANAN DITERIMA' }}</span>
+            <h1>{{ $adaBukti ? 'Pembayaran Berhasil Dikirim!' : 'Terima Kasih Atas Pesanan Anda!' }}</h1>
+            <p>
+                {{ $adaBukti
+                    ? 'Admin akan memverifikasi bukti pembayaranmu, lalu pesanan diproses.'
+                    : 'Pesanan berhasil dicatat. Tim kami siap memproses pesanan Anda.' }}
+            </p>
 
-                <div class="text-md-end flex-shrink-0">
-                    <div class="small text-muted fw-bold mb-1" style="font-size: 0.72rem; letter-spacing: 0.5px;">KODE PESANAN</div>
-                    <div class="order-code-badge">
-                        {{ $order->order_code }}
-                    </div>
-                </div>
+            <div class="sx-code">
+                <span class="lbl">KODE PESANAN</span>
+                <b id="sx-code">{{ $order->order_code }}</b>
+                <button type="button" class="sx-copy" id="sx-copy" title="Salin kode" aria-label="Salin kode pesanan">
+                    <i class="bi bi-clipboard"></i>
+                </button>
             </div>
+        </section>
+
+        {{-- RINGKASAN: 3 KOTAK SAMA LEBAR --}}
+        <section class="sx-stats">
+            <div class="sx-stat">
+                <small>Total tagihan</small>
+                <strong>{{ $rp($total) }}</strong>
+                @if (!$ongkirOk)<em>belum termasuk ongkir</em>@endif
+            </div>
+            <div class="sx-stat ok">
+                <small>Sudah dibayar</small>
+                <strong>{{ $rp($terverifikasi) }}</strong>
+                @if ($menunggu > 0)<em>+ {{ $rp($menunggu) }} menunggu verifikasi</em>@endif
+            </div>
+            <div class="sx-stat {{ $lunas ? 'ok' : 'due' }}">
+                <small>Sisa tagihan</small>
+                <strong>{{ $lunas ? 'Lunas' : $rp($belumBayar) }}</strong>
+                @if (!$lunas && $belumBayar <= 0 && $menunggu > 0)<em>menunggu verifikasi</em>@endif
+            </div>
+        </section>
+
+        <div class="sx-bar" title="{{ $pctPaid }}% terverifikasi">
+            <i class="a" style="width: {{ $pctPaid }}%"></i>
+            <i class="b" style="width: {{ $pctPending }}%"></i>
         </div>
 
-        {{-- TAMPILAN WEB 2 KOLOM --}}
-        <div class="row g-3">
+        {{-- BARIS 1: STATUS PESANAN | STATUS PEMBAYARAN --}}
+        <div class="row g-3 mb-3">
+            <div class="col-md-6">
+                <div class="sx-card">
+                    <h2><i class="bi bi-clock-history"></i> Status Pesanan</h2>
 
-            {{-- KOLOM KIRI: STATUS & DATA PEMESAN --}}
-            <div class="col-lg-5">
-
-                {{-- STATUS BOX --}}
-                <div class="success-card mb-3">
-                    <div class="fw-bold text-dark mb-2 small d-flex align-items-center gap-2">
-                        <i class="bi bi-clock-history text-success"></i> Status Pesanan
-                    </div>
-                    <div class="p-2 rounded-3 bg-light border d-flex align-items-center gap-2">
-                        <i class="bi bi-hourglass-split text-warning fs-5 ms-1"></i>
+                    <div class="sx-state">
+                        <div class="ic {{ $stWarna }}"><i class="bi {{ $stIkon }}"></i></div>
                         <div>
-                            <div class="fw-bold small text-dark">{{ $order->status ?? 'Menunggu Konfirmasi Admin' }}</div>
-                            <div class="text-muted" style="font-size: 0.74rem;">Jadwal & pengiriman sedang diverifikasi.</div>
+                            <b>{{ $stJudul }}</b>
+                            <span>{{ $stKet }}</span>
                         </div>
                     </div>
-                </div>
 
-                {{-- STATUS PEMBAYARAN --}}
-                <div class="success-card mb-3">
-                    <div class="fw-bold text-dark mb-2 small d-flex align-items-center gap-2">
-                        <i class="bi bi-credit-card text-success"></i> Status Pembayaran
-                    </div>
-
-                    <div class="small mb-2">
-                        <div class="d-flex justify-content-between"><span class="text-muted">Total tagihan</span><b>Rp{{ number_format($order->total, 0, ',', '.') }}</b></div>
-                        <div class="d-flex justify-content-between"><span class="text-muted">Terverifikasi</span><b class="text-success">Rp{{ number_format($order->paidAmount(), 0, ',', '.') }}</b></div>
-                        @if ($menunggu > 0)
-                            <div class="d-flex justify-content-between"><span class="text-muted">Menunggu verifikasi</span><b style="color:#8a5a00;">Rp{{ number_format($menunggu, 0, ',', '.') }}</b></div>
-                        @endif
-                        <div class="d-flex justify-content-between"><span class="text-muted">Belum dibayar</span><b class="text-danger">Rp{{ number_format($belumBayar, 0, ',', '.') }}</b></div>
-                    </div>
-
-                    @if ($statusBayar === 'Dibayar')
-                        <div class="alert alert-success border-0 rounded-3 small mb-0 py-2">
-                            <i class="bi bi-check-circle-fill me-1"></i> Pesanan sudah lunas.
-                        </div>
-                    @elseif ($order->hasPendingPayment())
-                        <div class="alert alert-warning border-0 rounded-3 small mb-0 py-2">
-                            <i class="bi bi-hourglass-split me-1"></i> Bukti pembayaran terkirim dan menunggu verifikasi admin.
-                            @if ($belumBayar > 0)
-                                Sisa Rp{{ number_format($belumBayar, 0, ',', '.') }} bisa dilunasi setelah itu.
-                            @endif
-                        </div>
-                    @elseif ($belumBayar > 0 && $bisaBayar)
-                        <a href="{{ route('customer.payment.create', $order->id) }}" class="btn-act-primary w-100">
-                            <i class="bi bi-credit-card"></i> {{ $adaBukti ? 'Bayar Pelunasan' : 'Bayar Sekarang' }}
-                        </a>
-                    @elseif ($belumBayar > 0)
-                        <div class="alert alert-info border-0 rounded-3 small mb-0 py-2">
-                            <i class="bi bi-truck me-1"></i> Menunggu admin mengonfirmasi ongkir sebelum kamu bisa membayar.
+                    @if ($tahap > 0)
+                        <div class="sx-track">
+                            @foreach ($langkah as $no => $label)
+                                <div class="sx-step {{ $tahap > $no ? 'done' : '' }} {{ $tahap === $no ? 'now' : '' }}">
+                                    <i>@if ($tahap > $no)<span class="bi bi-check-lg"></span>@else{{ $no }}@endif</i>
+                                    {{ $label }}
+                                </div>
+                            @endforeach
                         </div>
                     @endif
                 </div>
+            </div>
 
-                {{-- DATA PEMESAN & PENGIRIMAN --}}
-                <div class="success-card mb-3">
-                    <div class="fw-bold text-dark mb-3 small d-flex align-items-center gap-2">
-                        <i class="bi bi-person-badge text-success"></i> Informasi Pemesan
-                    </div>
+            <div class="col-md-6">
+                <div class="sx-card">
+                    <h2><i class="bi bi-credit-card"></i> Status Pembayaran</h2>
 
-                    <div class="detail-grid-box">
-                        <div class="detail-item">
-                            <div class="detail-label">Nama Pemesan</div>
-                            <div class="detail-val text-truncate" title="{{ $order->customer->name ?? '-' }}">
-                                {{ $order->customer->name ?? '-' }}
+                    @if ($lunas)
+                        <div class="alert alert-success border-0 rounded-3 small mb-2 py-2">
+                            <i class="bi bi-check-circle-fill me-1"></i> Pesanan sudah lunas.
+                        </div>
+                    @elseif ($order->hasPendingPayment())
+                        <div class="alert alert-warning border-0 rounded-3 small mb-2 py-2">
+                            <i class="bi bi-hourglass-split me-1"></i> Bukti pembayaran terkirim dan menunggu verifikasi admin.
+                            @if ($belumBayar > 0) Sisa {{ $rp($belumBayar) }} bisa dilunasi setelah itu.@endif
+                        </div>
+                    @elseif ($belumBayar > 0 && $ongkirOk)
+                        <a href="{{ route('customer.payment.create', $order->id) }}" class="sx-btn primary mb-2">
+                            <i class="bi bi-credit-card"></i> {{ $adaBukti ? 'Bayar Pelunasan' : 'Bayar Sekarang' }}
+                        </a>
+                    @elseif ($belumBayar > 0)
+                        <div class="alert alert-info border-0 rounded-3 small mb-2 py-2">
+                            <i class="bi bi-truck me-1"></i> Menunggu admin mengonfirmasi ongkir sebelum kamu bisa membayar.
+                        </div>
+                    @endif
+
+                    @forelse ($order->payments->sortBy('id') as $p)
+                        <div class="sx-hist">
+                            <div>
+                                <b>{{ $p->kindLabel() }}</b> · {{ strtoupper($p->method) }}
+                                <small>{{ $p->created_at?->locale('id')->translatedFormat('d M Y, H:i') }}</small>
+                            </div>
+                            <div class="text-end">
+                                <b>{{ $rp($p->amount) }}</b><br>
+                                <span class="sx-chip {{ $payChip[$p->status] ?? 'warn' }}">{{ $payLabel[$p->status] ?? $p->status }}</span>
                             </div>
                         </div>
+                    @empty
+                        <div class="text-muted small">Belum ada pembayaran yang dikirim.</div>
+                    @endforelse
+                </div>
+            </div>
+        </div>
 
-                        <div class="detail-item">
-                            <div class="detail-label">WhatsApp</div>
-                            <div class="detail-val">{{ $order->customer->phone ?? '-' }}</div>
-                        </div>
+        {{-- BARIS 2: INFORMASI PEMESAN | RINCIAN ITEM --}}
+        <div class="row g-3">
+            <div class="col-md-6">
+                <div class="sx-card">
+                    <h2><i class="bi bi-person-badge"></i> Informasi Pemesan</h2>
 
-                        <div class="detail-item">
-                            <div class="detail-label">Tgl Dibuat</div>
-                            <div class="detail-val">{{ \Carbon\Carbon::parse($order->order_date)->format('d/m/Y H:i') }}</div>
-                        </div>
-
-                        <div class="detail-item">
-                            <div class="detail-label">Tgl Dibutuhkan</div>
-                            <div class="detail-val text-success">{{ \Carbon\Carbon::parse($order->delivery_date)->format('d/m/Y') }}</div>
-                        </div>
-
-                        <div class="detail-item" style="grid-column: span 2 / span 2;">
-                            <div class="detail-label">Metode Penerimaan</div>
-                            <div class="detail-val">
-                                @if ($order->delivery_method === 'pickup')
-                                    <i class="bi bi-shop text-success me-1"></i> Ambil Sendiri (Di Tempat)
-                                @elseif ($order->delivery_method === 'delivery')
-                                    <i class="bi bi-truck text-success me-1"></i> Diantar ke Alamat
+                    <div class="sx-tiles">
+                        <div class="sx-tile"><small>Nama pemesan</small><b>{{ $order->customer->name ?? '-' }}</b></div>
+                        <div class="sx-tile"><small>WhatsApp</small><b>{{ $order->customer->phone ?? '-' }}</b></div>
+                        <div class="sx-tile"><small>Tgl dipesan</small><b>{{ \Carbon\Carbon::parse($order->order_date)->locale('id')->translatedFormat('d M Y') }}</b></div>
+                        <div class="sx-tile"><small>Tgl dibutuhkan</small><b class="text-success">{{ \Carbon\Carbon::parse($order->delivery_date)->locale('id')->translatedFormat('d M Y') }}</b></div>
+                        <div class="sx-tile full">
+                            <small>Metode penerimaan</small>
+                            <b>
+                                @if ($isDelivery)
+                                    <i class="bi bi-truck text-success me-1"></i> Diantar ke alamat
+                                    @if ($order->delivery_distance !== null) · {{ $order->delivery_distance }} km @endif
                                 @else
-                                    Belum ditentukan
+                                    <i class="bi bi-shop text-success me-1"></i> Ambil sendiri (di tempat)
                                 @endif
-                            </div>
+                            </b>
                         </div>
-
-                        @if($order->address)
-                            <div class="detail-item" style="grid-column: span 2 / span 2;">
-                                <div class="detail-label">Alamat Pengiriman</div>
-                                <div class="detail-val small">{{ $order->address }}</div>
-                            </div>
+                        @if ($isDelivery && $order->customer?->address)
+                            <div class="sx-tile full"><small>Alamat pengiriman</small><b>{{ $order->customer->address }}</b></div>
                         @endif
-
-                        @if($order->notes)
-                            <div class="detail-item" style="grid-column: span 2 / span 2;">
-                                <div class="detail-label">Catatan Pesanan</div>
-                                <div class="detail-val small text-muted">"{{ $order->notes }}"</div>
-                            </div>
+                        @if ($order->notes)
+                            <div class="sx-tile full"><small>Catatan pesanan</small><b class="fw-normal text-muted">"{{ $order->notes }}"</b></div>
                         @endif
-                    </div>
-                </div>
-
-                {{-- TOMBOL AKSI LAYAR --}}
-                <div class="d-flex flex-column flex-sm-row gap-2">
-                    <a href="{{ route('customer.packages.index') }}" class="btn-act-primary flex-grow-1">
-                        <i class="bi bi-house-door-fill"></i> Beranda
-                    </a>
-                    <button onclick="window.print()" class="btn-act-outline">
-                        <i class="bi bi-printer"></i> Cetak Struk
-                    </button>
-                    <a href="{{ route('customer.orders.show', $order->id) }}" class="btn-act-outline">
-                        <i class="bi bi-receipt"></i> Detail
-                    </a>
-                </div>
-
-            </div>
-
-            {{-- KOLOM KANAN: RINCIAN ITEM (TAMPILAN WEB) --}}
-            <div class="col-lg-7">
-                <div class="receipt-card">
-                    <div class="d-flex justify-content-between align-items-center mb-3 pb-2 border-bottom">
-                        <div>
-                            <div class="fw-bold text-dark" style="font-size: 0.95rem;">Rincian Item</div>
-                            <div class="text-muted" style="font-size: 0.75rem;">Daftar menu & paket yang dipesan</div>
-                        </div>
-                        <span class="badge bg-success-subtle text-success border border-success-subtle px-2 py-1" style="font-size: 0.72rem;">Nota Digital</span>
-                    </div>
-
-                    {{-- MENU TANPA HARGA SATUAN --}}
-                    <div class="mb-2">
-                        @forelse ($order->packages as $orderPackage)
-                            <div class="receipt-line">
-                                <div class="flex-grow-1 min-w-0">
-                                    <div class="fw-bold text-dark small text-truncate">
-                                        {{ $orderPackage->package->name ?? 'Paket Catering' }}
-                                    </div>
-                                </div>
-                                <div class="badge bg-success-subtle text-success fw-bold">
-                                    {{ $orderPackage->quantity }} Porsi
-                                </div>
-                            </div>
-                        @empty
-                        @endforelse
-
-                        @forelse ($order->details as $detail)
-                            <div class="receipt-line">
-                                <div class="flex-grow-1 min-w-0">
-                                    <div class="fw-bold text-dark small text-truncate">
-                                        {{ $detail->menu->name ?? 'Menu Satuan' }}
-                                    </div>
-                                </div>
-                                <div class="badge bg-success-subtle text-success fw-bold">
-                                    {{ $detail->quantity }} Porsi
-                                </div>
-                            </div>
-                        @empty
-                        @endforelse
-                    </div>
-
-                    {{-- TOTAL RINCIAN HARGA --}}
-                    <div class="receipt-total-box">
-                        <div class="d-flex justify-content-between align-items-center mb-1">
-                            <span class="text-muted small fw-bold">Subtotal Pesanan</span>
-                            <span class="fw-bold text-dark">
-                                Rp{{ number_format($order->total_price ?? $order->total ?? 0, 0, ',', '.') }}
-                            </span>
-                        </div>
-                        <div class="d-flex justify-content-between align-items-center mb-2" style="font-size: 0.78rem;">
-                            <span class="text-muted">Ongkos Kirim</span>
-                            <span class="text-success fw-bold">
-                                {{ $order->delivery_method === 'pickup' ? 'Gratis (Ambil Sendiri)' : 'Sesuai Konfirmasi Admin' }}
-                            </span>
-                        </div>
-                        <div class="border-top pt-2 d-flex justify-content-between align-items-baseline">
-                            <span class="fw-extrabold text-dark" style="font-size: 0.9rem;">TOTAL ESTIMASI</span>
-                            <span class="fw-black text-success fs-5">
-                                Rp{{ number_format($order->total_price ?? $order->total ?? 0, 0, ',', '.') }}
-                            </span>
-                        </div>
-                    </div>
-
-                    <div class="text-center mt-3 pt-2 border-top">
-                        <small class="text-muted d-block" style="font-size: 0.75rem;">
-                            <i class="bi bi-shield-check text-success me-1"></i> Simpan tangkapan layar atau cetak nota ini sebagai bukti pemesanan.
-                        </small>
                     </div>
                 </div>
             </div>
 
+            <div class="col-md-6">
+                <div class="sx-card">
+                    <h2><i class="bi bi-basket2"></i> Rincian Item</h2>
+
+                    @foreach ($order->packages as $op)
+                        <div class="sx-item">
+                            <div>
+                                <b>{{ $op->package->name ?? 'Paket Catering' }}</b>
+                                <small>{{ $op->quantity }} porsi × {{ $rp($op->price) }}</small>
+                            </div>
+                            <b>{{ $rp($op->subtotal) }}</b>
+                        </div>
+                    @endforeach
+
+                    @foreach ($extras as $d)
+                        <div class="sx-item">
+                            <div>
+                                <b>{{ $d->menu->name ?? 'Menu tambahan' }}</b>
+                                <small>{{ $d->quantity }} porsi × {{ $rp($d->price) }}</small>
+                            </div>
+                            <b>{{ $rp($d->subtotal) }}</b>
+                        </div>
+                    @endforeach
+
+                    @if ($komponen->isNotEmpty())
+                        <details class="sx-isi">
+                            <summary>Lihat isi paket ({{ $komponen->count() }} menu)</summary>
+                            <ul>
+                                @foreach ($komponen as $d)
+                                    <li><span>{{ $d->menu->name ?? 'Menu' }}</span><b>{{ $d->quantity }} porsi</b></li>
+                                @endforeach
+                            </ul>
+                        </details>
+                    @endif
+
+                    <div class="sx-total">
+                        <div class="row2"><span>Subtotal item</span><b>{{ $rp($subtotalItem) }}</b></div>
+                        <div class="row2">
+                            <span>Ongkos kirim</span>
+                            <b class="{{ $isDelivery && !$ongkirOk ? 'text-warning' : 'text-success' }}">{{ $ongkirText }}</b>
+                        </div>
+                        <div class="row2 big">
+                            <span>{{ $ongkirOk ? 'TOTAL TAGIHAN' : 'TOTAL SEMENTARA' }}</span>
+                            <span>{{ $rp($total) }}</span>
+                        </div>
+                        @if (!$ongkirOk)
+                            <div class="text-muted mt-1" style="font-size: .72rem;">Belum termasuk ongkir. Total final setelah admin menetapkan jarak dan ongkir.</div>
+                        @endif
+                    </div>
+                </div>
+            </div>
         </div>
+
+        {{-- AKSI: 3 TOMBOL SAMA LEBAR --}}
+        <div class="sx-actions">
+            <a href="{{ route('customer.packages.index') }}" class="sx-btn primary">
+                <i class="bi bi-house-door-fill"></i> Beranda
+            </a>
+            <a href="{{ route('customer.orders.receipt', ['order' => $order->id, 'print' => 1]) }}" target="_blank" rel="noopener" class="sx-btn">
+                <i class="bi bi-printer"></i> Cetak Struk
+            </a>
+            <a href="{{ route('customer.orders.show', $order->id) }}" class="sx-btn">
+                <i class="bi bi-receipt"></i> Detail Pesanan
+            </a>
+        </div>
+
     </div>
 </div>
 
-{{-- ========================================================== --}}
-{{-- CONTAINER STRUK KHUSUS UNTUK HANYA DICETAK 1 HALAMAN FISIK --}}
-{{-- ========================================================== --}}
-<div class="print-only-receipt">
-    <div class="print-header">
-        <div class="print-title">KEDAI BANGJO CATERING</div>
-        <div class="print-subtitle">STRUK BUKTI PEMESANAN & PENGAMBILAN RESMI</div>
-        <div class="print-code">NO. PESANAN: {{ $order->order_code }}</div>
-    </div>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    var btn  = document.getElementById('sx-copy');
+    var code = document.getElementById('sx-code');
+    if (!btn || !code) { return; }
 
-    <table class="print-table-info">
-        <tr>
-            <td style="width: 50%;"><strong>Nama Pemesan:</strong> {{ $order->customer->name ?? '-' }}</td>
-            <td style="width: 50%;"><strong>Tgl Pemesanan:</strong> {{ \Carbon\Carbon::parse($order->order_date)->format('d/m/Y H:i') }}</td>
-        </tr>
-        <tr>
-            <td><strong>No. WhatsApp:</strong> {{ $order->customer->phone ?? '-' }}</td>
-            <td><strong>Tgl Dibutuhkan:</strong> {{ \Carbon\Carbon::parse($order->delivery_date)->format('d/m/Y') }}</td>
-        </tr>
-        <tr>
-            <td colspan="2">
-                <strong>Metode Penerimaan:</strong>
-                {{ $order->delivery_method === 'pickup' ? 'AMBIL SENDIRI (DI TEMPAT)' : 'DIANTAR KE ALAMAT' }}
-            </td>
-        </tr>
-        @if($order->address)
-        <tr>
-            <td colspan="2"><strong>Alamat Pengiriman:</strong> {{ $order->address }}</td>
-        </tr>
-        @endif
-        @if($order->notes)
-        <tr>
-            <td colspan="2"><strong>Catatan:</strong> {{ $order->notes }}</td>
-        </tr>
-        @endif
-    </table>
+    var icon = function (name) { btn.innerHTML = '<i class="bi ' + name + '"></i>'; };
+    var done = function () { icon('bi-check2'); setTimeout(function () { icon('bi-clipboard'); }, 1500); };
 
-    <div class="print-divider"></div>
+    btn.addEventListener('click', function () {
+        var text = code.textContent.trim();
 
-    <table class="print-items-table">
-        <thead>
-            <tr>
-                <th>Nama Menu / Paket</th>
-                <th style="text-align: right;">Jumlah</th>
-            </tr>
-        </thead>
-        <tbody>
-            @forelse ($order->packages as $orderPackage)
-                <tr>
-                    <td>
-                        <strong>{{ $orderPackage->package->name ?? 'Paket Catering' }}</strong>
-                    </td>
-                    <td style="text-align: right; font-weight: bold;">
-                        {{ $orderPackage->quantity }} Porsi
-                    </td>
-                </tr>
-            @empty
-            @endforelse
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text).then(done);
+            return;
+        }
 
-            @forelse ($order->details as $detail)
-                <tr>
-                    <td>
-                        <strong>{{ $detail->menu->name ?? 'Menu Satuan' }}</strong>
-                    </td>
-                    <td style="text-align: right; font-weight: bold;">
-                        {{ $detail->quantity }} Porsi
-                    </td>
-                </tr>
-            @empty
-            @endforelse
-        </tbody>
-    </table>
-
-    <div class="print-total-section">
-        <div class="print-total-row">
-            <span>Subtotal Item:</span>
-            <span>Rp{{ number_format($order->total_price ?? $order->total ?? 0, 0, ',', '.') }}</span>
-        </div>
-        <div class="print-total-row">
-            <span>Ongkos Kirim:</span>
-            <span>{{ $order->delivery_method === 'pickup' ? 'Gratis (Ambil Sendiri)' : 'Sesuai Konfirmasi Admin' }}</span>
-        </div>
-        <div class="print-total-row print-grand-total">
-            <span>TOTAL ESTIMASI:</span>
-            <span>Rp{{ number_format($order->total_price ?? $order->total ?? 0, 0, ',', '.') }}</span>
-        </div>
-    </div>
-
-    <div class="print-footer-note">
-        <strong>*** TERIMA KASIH ***</strong><br>
-        Harap tunjukkan struk ini kepada petugas saat mengambil atau menerima pesanan.<br>
-        Kedai Bangjo Catering
-    </div>
-</div>
+        var t = document.createElement('textarea');
+        t.value = text;
+        document.body.appendChild(t);
+        t.select();
+        try { document.execCommand('copy'); done(); } catch (e) {}
+        t.remove();
+    });
+});
+</script>
 @endsection

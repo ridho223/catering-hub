@@ -10,14 +10,23 @@
     .dh-hero p.sum { margin:0; color:var(--mute); max-width:560px; }
     .dh-hero .btn { border-radius:12px; font-weight:600; }
 
-    .dh-queue { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:.75rem; }
-    .dh-q { display:flex; align-items:center; gap:.8rem; background:#fff; border:1px solid var(--line); border-radius:16px; padding:.85rem 1rem; text-decoration:none; color:inherit; transition:transform .15s, border-color .15s; }
-    .dh-q:hover { transform:translateY(-2px); border-color:#b9d8c7; color:inherit; }
-    .dh-q .ui-ic { width:40px; height:40px; border-radius:12px; font-size:1.1rem; }
-    .dh-q b { font-size:1.35rem; line-height:1.1; display:block; color:var(--ink); }
-    .dh-q span { color:var(--mute); font-size:.84rem; line-height:1.2; display:block; }
-    .dh-q.has-warn { border-color:#f2d99a; }
-    .dh-q.has-bad  { border-color:#f3b9bf; }
+.dh-queue { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:.75rem; }
+.dh-q { position:relative; display:flex; align-items:center; gap:.85rem; min-width:0; background:#fff; border:1px solid var(--line); border-radius:18px; padding:.9rem 1rem; text-decoration:none; color:inherit; transition:transform .15s, border-color .15s, box-shadow .15s; }
+.dh-q:hover { transform:translateY(-2px); border-color:#b9d8c7; box-shadow:0 10px 24px rgba(20,40,28,.07); color:inherit; }
+.dh-q .ui-ic { width:44px; height:44px; flex:none; border-radius:14px; font-size:1.2rem; display:grid; place-items:center; }
+.dh-q > div { min-width:0; }
+.dh-q b { font-size:1.4rem; line-height:1.1; display:block; color:var(--ink); font-variant-numeric:tabular-nums; }
+.dh-q > div > span { color:var(--mute); font-size:.82rem; line-height:1.25; display:block; overflow-wrap:anywhere; }
+.dh-q.has-warn { border-color:#f2d99a; background:linear-gradient(135deg,#fffdf6,#fff); }
+.dh-q.has-bad  { border-color:#f3b9bf; background:linear-gradient(135deg,#fff8f8,#fff); }
+
+@media (max-width:1199.98px) { .dh-queue { grid-template-columns:repeat(3,minmax(0,1fr)); } }
+@media (max-width:767.98px) {
+    .dh-queue { grid-template-columns:repeat(2,minmax(0,1fr)); }
+    .dh-q { padding:.75rem .85rem; gap:.65rem; }
+    .dh-q .ui-ic { width:38px; height:38px; font-size:1.05rem; border-radius:12px; }
+    .dh-q:last-child:nth-child(odd) { grid-column:1 / -1; }
+}
 
     .dh-chart { position:relative; height:290px; }
     .dh-stack { display:flex; height:12px; border-radius:8px; overflow:hidden; background:var(--line); margin-bottom:.9rem; }
@@ -65,7 +74,7 @@
     $statusMeta = [
         'Pending'              => ['Menunggu bayar',       '#f0ad00', 'warn'],
         'Diproses'             => ['Diproses',             '#2f8fd8', 'info'],
-        'Siap_diambil_atau_diantar' => ['Siap_diambil_atau_diantar', '#6b5ce7', 'ready'],
+        'Siap_diambil_atau_diantar' => ['Siap diambil / diantar', '#6b5ce7', 'ready'],
         'Selesai'              => ['Selesai',              '#198754', 'ok'],
     ];
     $statusTotal = max(1, array_sum(array_map(fn ($k) => $statusCounts[$k] ?? 0, array_keys($statusMeta))));
@@ -74,7 +83,7 @@
     $actions = [
         ['Verifikasi pembayaran', $pendingPayments,                           'bi-patch-check',    $url('admin.payments.index'), 'warn'],
         ['Sedang diproses',       $statusCounts['Diproses'] ?? 0,             'bi-fire',           $url('orders.index'),         'info'],
-        ['Siap_diambil_atau_diantar',  $statusCounts['Siap_diambil_atau_diantar'] ?? 0, 'bi-bag-check',      $url('orders.index'),         'ready'],
+        ['Siap diambil / diantar', $statusCounts['Siap_diambil_atau_diantar'] ?? 0, 'bi-bag-check', $url('orders.index'), 'ready'],
         ['Jadwal hari ini',       $todayCount,                                'bi-calendar-event', $url('orders.index'),         'bad'],
         ['Stok menipis',          $lowStockCount,                             'bi-box-seam',       $url('menu.index'),           'warn'],
     ];

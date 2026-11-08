@@ -236,11 +236,20 @@
             <div class="osh-actions">
                 <a href="{{ route('orders.index') }}" class="btn btn-outline-secondary rounded-3 px-3"><i class="bi bi-arrow-left me-1"></i> Daftar</a>
                 <a href="{{ route('orders.edit', $order->id) }}" class="btn btn-success rounded-3 px-3"><i class="bi bi-pencil-square me-1"></i> Edit pesanan</a>
-                <form action="{{ route('orders.destroy', $order->id) }}" method="POST"
-                      onsubmit="return confirm('Hapus pesanan {{ e($code) }}? Tindakan ini tidak bisa dibatalkan.')">
-                    @csrf @method('DELETE')
-                    <button type="submit" class="btn btn-outline-danger rounded-3" title="Hapus pesanan"><i class="bi bi-trash"></i></button>
-                </form>
+                    @if ($order->status === 'Pending' && ! $order->hasActivePayment())
+                        <form action="{{ route('orders.cancel', $order->id) }}" method="POST"
+                            onsubmit="return confirm('Batalkan pesanan {{ e($code) }}? Stok menu akan dikembalikan.')">
+                            @csrf
+                            <button type="submit" class="btn btn-outline-warning rounded-3" title="Batalkan pesanan"><i class="bi bi-x-circle me-1"></i> Batalkan</button>
+                        </form>
+                    @endif
+                    @if (in_array($order->status, ['Pending', 'Dibatalkan'], true) && ! $order->hasActivePayment())
+                        <form action="{{ route('orders.destroy', $order->id) }}" method="POST"
+                            onsubmit="return confirm('Hapus pesanan {{ e($code) }}? Tindakan ini tidak bisa dibatalkan.')">
+                            @csrf @method('DELETE')
+                            <button type="submit" class="btn btn-outline-danger rounded-3" title="Hapus pesanan"><i class="bi bi-trash"></i></button>
+                        </form>
+                    @endif
             </div>
         </div>
 
@@ -368,7 +377,7 @@
                         <span>Bukti pembayaran</span>
                         <b>
                             @if ($payment?->proof)
-                                <a href="{{ asset('storage/' . $payment->proof) }}" target="_blank" rel="noopener noreferrer" class="text-success text-decoration-none">
+                                <a href="{{ route('admin.payments.proof', $payment->id) }}" target="_blank" rel="noopener noreferrer" class="text-success text-decoration-none">
                                     <i class="bi bi-image me-1"></i>Lihat bukti
                                 </a>
                             @else

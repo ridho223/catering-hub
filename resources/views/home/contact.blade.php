@@ -6,17 +6,18 @@
 @section('content')
 @php
     $kedai = [
-        'name'     => 'Kedai BangJo',
-        'phone'    => '0812-3456-7890',
-        'whatsapp' => '6281234567890',
-        'email'    => 'info@kedaibangjo.com',
-        'address'  => 'Jl. Kauman I, Turen, Kec. Turen, Kabupaten Malang, Jawa Timur 65175',
+        'name'      => 'Kedai BangJo',
+        'phone'     => '0819-4491-2922',
+        'whatsapp'  => '6281944912922',
+        'email'     => 'cateringkedaibangjo.com',
+        'address'   => 'Jl. Kauman I, Turen, Kec. Turen, Kabupaten Malang, Jawa Timur 65175',
+        'map_query' => 'Catering "Kedai BangJo", Jl. Kauman I, Turen, Malang Regency, East Java 65175',
     ];
     $addr     = $kedai['address'];
     $waUrl    = 'https://wa.me/' . $kedai['whatsapp'];
-    $mapEmbed = 'https://www.google.com/maps?q=' . urlencode($addr) . '&z=16&output=embed';
-    $mapOpen  = 'https://www.google.com/maps/search/?api=1&query=' . urlencode($addr);
-    $mapRoute = 'https://www.google.com/maps/dir/?api=1&destination=' . urlencode($addr);
+    $mapEmbed = 'https://www.google.com/maps?q=' . urlencode($kedai['map_query']) . '&z=16&output=embed';
+    $mapOpen  = 'https://www.google.com/maps/search/?api=1&query=' . urlencode($kedai['map_query']);
+    $mapRoute = 'https://www.google.com/maps/dir/?api=1&destination=' . urlencode($kedai['map_query']);
 
     $topics = ['Tanya menu atau paket', 'Pesan prasmanan', 'Kendala pesanan atau pembayaran', 'Kerja sama', 'Lainnya'];
 @endphp

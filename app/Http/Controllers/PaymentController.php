@@ -6,21 +6,19 @@ use App\Models\Order;
 use App\Models\Payment;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Validation\Rule;
 
 class PaymentController extends Controller
 {
-    /**
-     * Display a listing of the resource.
-     */
-
-    /**
-     * Show the form for creating a new resource.
-     */
     public function create(Order $order)
     {
         $order = $this->ownedOrder($order);
+
+        if (in_array($order->status, ['Selesai', 'Dibatalkan'], true) && ! $order->isFullyPaid()) {
+            return redirect()->route('customer.orders.show', $order->id)
+                ->with('error', 'Pesanan ini sudah ' . strtolower($order->status) . ' dan tidak bisa dibayar.');
+        }
 
         if ($order->isFullyPaid()) {
             return redirect()->route('customer.orders.show', $order->id)->with('success', 'Pesanan ini sudah lunas');
@@ -39,6 +37,9 @@ class PaymentController extends Controller
         $order = $this->ownedOrder($order);
         $back  = redirect()->route('customer.orders.show', $order->id);
 
+        if ($order->status === 'Dibatalkan') {
+            return $back->with('error', 'Pesanan ini sudah dibatalkan dan tidak bisa dibayar.');
+        }
         if ($order->isFullyPaid()) {
             return $back->with('error', 'Pesanan ini sudah lunas');
         }
@@ -49,7 +50,7 @@ class PaymentController extends Controller
             return $back->with('error', 'Pembayaran belum tersedia karena pengiriman belum dikonfirmasi admin.');
         }
 
-        $min = (int) round($order->minPayment());
+        $min = max(1, (int) round($order->minPayment()));
         $max = (int) round($order->maxPayment());
 
         $validated = $request->validate([
@@ -64,31 +65,65 @@ class PaymentController extends Controller
             'amount.max'     => 'Nominal tidak boleh melebihi sisa tagihan Rp' . number_format($max, 0, ',', '.') . '.',
         ]);
 
-        $amount = (float) $validated['amount'];
-        $lunas  = $amount >= $order->remainingAmount() - 0.5;
+        // Bukti bayar disimpan di disk private (tidak bisa dibuka lewat URL publik).
+        $proof = $request->file('proof')->store('payments', 'local');
 
-        if ($lunas) {
-            $amount = $order->remainingAmount();
+        try {
+            $payment = DB::transaction(function () use ($order, $validated, $proof) {
+                // Kunci pesanan: klik ganda / dua tab tidak bisa membuat dua pembayaran sekaligus.
+                $fresh = Order::whereKey($order->id)->lockForUpdate()->firstOrFail();
+                $fresh->load('payments');
+
+                if (in_array($fresh->status, ['Selesai', 'Dibatalkan'], true) && ! $fresh->isFullyPaid()) {
+                    throw new \RuntimeException('Pesanan ini sudah ' . strtolower($fresh->status) . ' dan tidak bisa dibayar.');
+                }
+                if ($fresh->isFullyPaid()) {
+                    throw new \RuntimeException('Pesanan ini sudah lunas');
+                }
+                if ($fresh->hasPendingPayment()) {
+                    throw new \RuntimeException('Masih ada pembayaran yang menunggu verifikasi admin.');
+                }
+
+                $remaining = (float) $fresh->remainingAmount();
+                $amount    = (float) $validated['amount'];
+
+                if ($amount > $remaining + 0.5) {
+                    throw new \RuntimeException('Nominal tidak boleh melebihi sisa tagihan Rp' . number_format($remaining, 0, ',', '.') . '.');
+                }
+
+                $lunas = $amount >= $remaining - 0.5;
+
+                if ($lunas) {
+                    $amount = $remaining;
+                }
+
+                // Jenis ditentukan server dari nominal, bukan dipilih customer
+                $type = $fresh->paidAmount() > 0
+                    ? ($lunas ? 'pelunasan' : 'cicilan')
+                    : ($lunas ? 'lunas' : 'dp');
+
+                return Payment::create([
+                    'order_id'       => $fresh->id,
+                    'type'           => $type,
+                    'method'         => $validated['method'],
+                    'amount'         => $amount,
+                    'claimed_amount' => $amount,
+                    'status'         => 'Menunggu Verifikasi',
+                    'proof'          => $proof,
+                    'paid_at'        => null,
+                    'notes'          => $validated['notes'] ?? null,
+                ]);
+            });
+        } catch (\RuntimeException $e) {
+            Storage::disk('local')->delete($proof);
+
+            return $back->with('error', $e->getMessage());
+        } catch (\Throwable $e) {
+            Storage::disk('local')->delete($proof);
+            report($e);
+
+            return $back->with('error', 'Pembayaran gagal dikirim. Silakan coba lagi.');
         }
-
-        // Jenis ditentukan server dari nominal, bukan dipilih customer
-        $type = $order->paidAmount() > 0
-            ? ($lunas ? 'pelunasan' : 'cicilan')
-            : ($lunas ? 'lunas' : 'dp');
-
-        $proof = $request->file('proof')->store('payments', 'public');
-
-        $payment = Payment::create([
-            'order_id'       => $order->id,
-            'type'           => $type,
-            'method'         => $validated['method'],
-            'amount'         => $amount,
-            'claimed_amount' => $amount,
-            'status'         => 'Menunggu Verifikasi',
-            'proof'          => $proof,
-            'paid_at'        => null,
-            'notes'          => $validated['notes'] ?? null,
-        ]);
 
         app(\App\Services\AdminNotifier::class)->paymentProof($payment);
 
@@ -98,40 +133,8 @@ class PaymentController extends Controller
     private function ownedOrder(Order $order): Order
     {
         $customer = Auth::guard('customer')->user()->customer;
-        abort_if(!$customer, 404);
+        abort_if(! $customer, 404);
 
         return $customer->orders()->with('payments')->findOrFail($order->id);
-    }
-
-    /**
-     * Display the specified resource.
-     */
-    public function show(string $id)
-    {
-        //
-    }
-
-    /**
-     * Show the form for editing the specified resource.
-     */
-    public function edit(string $id)
-    {
-        //
-    }
-
-    /**
-     * Update the specified resource in storage.
-     */
-    public function update(Request $request, string $id)
-    {
-        //
-    }
-
-    /**
-     * Remove the specified resource from storage.
-     */
-    public function destroy(string $id)
-    {
-        //
     }
 }

@@ -86,6 +86,12 @@ class CategoryController extends Controller
      */
     public function destroy(Category $category)
     {
+        // Menghapus kategori menghapus semua menu di dalamnya. Cegah supaya tidak hilang diam-diam.
+        if ($category->menus()->exists()) {
+            return redirect()->route('categories.index')
+                ->with('error','Kategori masih memiliki menu. Pindahkan atau hapus menunya dulu.');
+        }
+
         $category->delete();
 
         return redirect()->route('categories.index')

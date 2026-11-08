@@ -2,13 +2,16 @@
 
 namespace App\Models;
 
+use App\Notifications\CustomerResetPassword;
+use App\Notifications\CustomerVerifyEmail;
+use Illuminate\Contracts\Auth\MustVerifyEmail;
+use Illuminate\Auth\MustVerifyEmail as MustVerifyEmailTrait;
 use Illuminate\Foundation\Auth\User as Authenticatable;
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Notifications\Notifiable;
 
-class CustomerAccount extends Authenticatable
+class CustomerAccount extends Authenticatable implements MustVerifyEmail
 {
-    use Notifiable;
+    use Notifiable, MustVerifyEmailTrait;
 
     protected $table = 'customer_accounts';
 
@@ -30,6 +33,18 @@ class CustomerAccount extends Authenticatable
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
         ];
+    }
+
+    // Link verifikasi email mengarah ke halaman verifikasi customer.
+    public function sendEmailVerificationNotification(): void
+    {
+        $this->notify(new CustomerVerifyEmail());
+    }
+
+    // Link reset password mengarah ke halaman reset customer (bukan route admin).
+    public function sendPasswordResetNotification($token): void
+    {
+        $this->notify(new CustomerResetPassword($token));
     }
 
     public function customer()

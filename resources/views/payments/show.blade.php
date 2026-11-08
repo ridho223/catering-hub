@@ -35,7 +35,7 @@
     $pctPaid      = $total > 0 ? min(100, (int) round($paidBefore / $total * 100)) : 0;
     $pctThis      = $total > 0 ? min(100 - $pctPaid, (int) round($counted / $total * 100)) : 0;
 
-    $proofUrl = $payment->proof ? asset('storage/' . $payment->proof) : null;
+    $proofUrl = $payment->proof ? route('admin.payments.proof', $payment->id) : null;
     $isPdf    = $payment->proof && Str::endsWith(Str::lower($payment->proof), '.pdf');
     $rupiah   = fn ($v) => 'Rp' . number_format(abs($v), 0, ',', '.');
 @endphp
@@ -187,7 +187,7 @@
                     @foreach ($order->payments->sortBy('id') as $p)
                         @php
                             $pc   = $chipClass[$p->status] ?? 'off';
-                            $pUrl = $p->proof ? asset('storage/' . $p->proof) : null;
+                            $pUrl = $p->proof ? route('admin.payments.proof', $p->id) : null;
                         @endphp
                         <div class="pys-hist {{ $p->id === $payment->id ? 'now' : '' }}">
                             <div class="d-flex align-items-center gap-2">

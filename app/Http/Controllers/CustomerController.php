@@ -30,14 +30,18 @@ class CustomerController extends Controller
      */
     public function store(Request $request)
     {
-        $request->validate([
+        $request->merge(['phone' => Customer::normalizePhone($request->input('phone'))]);
+
+        $data = $request->validate([
             'name' => 'required|max:100',
-            'email' => 'nullable|email',
-            'phone' => 'required|max:20',
-            'address' => 'required'
+            'email' => 'nullable|email|max:255',
+            'phone' => ['required', 'regex:/^0[0-9]{8,14}$/'],
+            'address' => 'required|max:500'
+        ], [
+            'phone.regex' => 'Nomor telepon tidak valid. Contoh: 081234567890.',
         ]);
 
-        Customer::create($request->all());
+        Customer::create($data);
 
         return redirect()->route('customers.index')->with('success','Customer berhasil ditambahkan');
     }
@@ -45,9 +49,22 @@ class CustomerController extends Controller
     /**
      * Display the specified resource.
      */
-    public function show(string $id)
+    public function show(Customer $customer)
     {
-        //
+        $customer->load('account');
+        $orders = $customer->orders()->latest()->limit(10)->get();
+
+        $notCancelled = $customer->orders()->where('status', '!=', 'Dibatalkan');
+
+        $stats = [
+            'total'  => $customer->orders()->count(),
+            'active' => $customer->orders()->whereIn('status', ['Pending', 'Diproses', 'Siap_diambil_atau_diantar'])->count(),
+            'done'   => $customer->orders()->where('status', 'Selesai')->count(),
+            'valid'  => (clone $notCancelled)->count(),
+            'spent'  => (float) (clone $notCancelled)->sum('total'),
+        ];
+
+        return view('customer.show', compact('customer', 'orders', 'stats'));
     }
 
     /**
@@ -63,14 +80,18 @@ class CustomerController extends Controller
      */
     public function update(Request $request, Customer $customer)
     {
-        $request->validate([
+        $request->merge(['phone' => Customer::normalizePhone($request->input('phone'))]);
+
+        $data = $request->validate([
             'name' => 'required|max:100',
-            'email' => 'nullable|email',
-            'phone' => 'required|max:20',
-            'address' => 'required'
+            'email' => 'nullable|email|max:255',
+            'phone' => ['required', 'regex:/^0[0-9]{8,14}$/'],
+            'address' => 'required|max:500'
+        ], [
+            'phone.regex' => 'Nomor telepon tidak valid. Contoh: 081234567890.',
         ]);
 
-        $customer->update($request->all());
+        $customer->update($data);
 
         return redirect()->route('customers.index')->with('success','Customer berhasil diperbarui');
     }
@@ -80,6 +101,12 @@ class CustomerController extends Controller
      */
     public function destroy(Customer $customer)
     {
+        // Customer yang punya pesanan tidak boleh dihapus (riwayat transaksi & laporan).
+        if ($customer->orders()->exists()) {
+            return redirect()->route('customers.index')
+                ->with('error','Customer ini punya riwayat pesanan sehingga tidak bisa dihapus.');
+        }
+
         $customer->delete();
 
         return redirect()->route('customers.index')->with('success','Customer berhasil dihapus');

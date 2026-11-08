@@ -8,26 +8,34 @@ use App\Models\Order;
 use App\Models\OrderDetail;
 use App\Models\OrderPackage;
 use App\Models\Package;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 class CheckoutController extends Controller
 {
     public function index()
     {
-        $cart = session()->get('cart', []);
+        [$cart, $notes] = CartController::syncCart();
 
         if (empty($cart)) {
             return redirect()
                 ->route('cart.index')
-                ->with('error', 'Keranjang masih kosong.');
+                ->with('error', $notes ? implode(' ', $notes) : 'Keranjang masih kosong.');
         }
 
         $account = Auth::guard('customer')->user();
 
         $customer = $account->customer;
+
+        if (! $customer) {
+            return redirect()
+                ->route('customer.register')
+                ->with('error', 'Data customer belum ditemukan.');
+        }
 
         $total = 0;
 
@@ -35,11 +43,8 @@ class CheckoutController extends Controller
             $total += $item['price'] * $item['quantity'];
         }
 
-
-        if (!$customer) {
-            return redirect()
-                ->route('customer.register')
-                ->with('error', 'Data customer belum ditemukan.');
+        if ($notes) {
+            session()->now('error', implode(' ', $notes));
         }
 
         return view('checkout.index', compact('cart', 'total', 'customer'));
@@ -47,15 +52,21 @@ class CheckoutController extends Controller
 
     public function store(Request $request)
     {
+        $request->merge(['phone' => Customer::normalizePhone($request->input('phone'))]);
+
+        $minDate = now()->addDays((int) config('shop.min_lead_days', 0))->toDateString();
+
         $validated = $request->validate([
             'name' => 'required|string|max:255',
-            'email' => 'required|email|max:255',
-            'phone' => 'required|string|max:20',
-            'address' => 'required|string',
-            'delivery_date' => 'required|date|after_or_equal:today',
+            'phone' => ['required', 'string', 'regex:/^0[0-9]{8,14}$/'],
+            'address' => 'required|string|max:500',
+            'delivery_date' => 'required|date|after_or_equal:' . $minDate . '|before_or_equal:' . now()->addYear()->toDateString(),
             'delivery_method' => 'required|in:pickup,delivery',
-            'notes' => 'nullable|string',
-        ]);    
+            'notes' => 'nullable|string|max:1000',
+        ], [
+            'phone.regex' => 'Nomor telepon tidak valid. Contoh: 081234567890.',
+            'delivery_date.after_or_equal' => 'Tanggal kirim/ambil minimal ' . \Carbon\Carbon::parse($minDate)->translatedFormat('d F Y') . '.',
+        ]);
 
         $cart = session()->get('cart', []);
 
@@ -69,37 +80,46 @@ class CheckoutController extends Controller
 
         $customer = $account->customer;
 
-         if (!$customer) {
+        if (! $customer) {
+            return back()->with('error', 'Data customer tidak ditemukan.');
+        }
+
+        // Batasi pesanan Pending per customer (mencegah penimbunan stok).
+        $maxPending = (int) config('shop.max_pending_orders', 3);
+
+        if ($maxPending > 0 && $customer->orders()->where('status', 'Pending')->count() >= $maxPending) {
             return back()
-                ->with('error', 'Data customer tidak ditemukan.');
+                ->withInput()
+                ->with('error', "Kamu masih punya {$maxPending} pesanan yang belum diproses. Selesaikan atau batalkan salah satunya dulu.");
+        }
+
+        // Cegah pesanan ganda karena klik dua kali / submit bersamaan.
+        $dedupeKey = 'checkout:' . $account->id . ':' . md5(json_encode([$cart, $validated]));
+
+        if (! Cache::add($dedupeKey, true, 20)) {
+            return redirect()
+                ->route('customer.orders.index')
+                ->with('success', 'Pesananmu sedang/sudah diproses. Cek daftar pesanan di bawah.');
         }
 
         try {
 
             $order = DB::transaction(function () use ($validated, $cart, $customer) {
 
-                /*
-                |--------------------------------------------------------------------------
-                | 1. perbarui customer
-                |--------------------------------------------------------------------------
-                */         
-
+                // Email tidak diubah dari checkout: email akun = email login & tujuan verifikasi.
                 $customer->update([
                     'name' => $validated['name'],
-                    'email' => $validated['email'],
                     'phone' => $validated['phone'],
                     'address' => $validated['address'],
-                ]);   
+                ]);
 
-                /*
-                |--------------------------------------------------------------------------
-                | 2. Buat order
-                |--------------------------------------------------------------------------
-                */                
+                do {
+                    $orderCode = 'ORD-' . now()->format('ymd') . '-' . strtoupper(Str::random(5));
+                } while (Order::where('order_code', $orderCode)->exists());
 
                 $order = Order::create([
-                    'order_code' => 'ORD-' . now()->format('YmdHis') . '-' . random_int(100, 999),
-                    'customer_id' => $customer->id,                    
+                    'order_code' => $orderCode,
+                    'customer_id' => $customer->id,
                     'order_date' => now()->toDateString(),
                     'delivery_date' => $validated['delivery_date'],
                     'delivery_method' => $validated['delivery_method'],
@@ -112,18 +132,12 @@ class CheckoutController extends Controller
 
                 $total = 0;
 
-                /*
-                |--------------------------------------------------------------------------
-                | 3. Proses setiap paket di keranjang
-                |--------------------------------------------------------------------------
-                */
-
+                // Stok tiap menu dikunci dan dibaca ulang dari database di setiap iterasi,
+                // jadi menu yang dipakai beberapa paket tetap dihitung akurat.
                 foreach ($cart as $item) {
 
                     if (($item['type'] ?? null) !== 'package') {
-                        throw new \Exception(
-                            'Isi keranjang tidak valid.'
-                        );
+                        throw new \RuntimeException('Isi keranjang tidak valid.');
                     }
 
                     $package = Package::with('details')
@@ -131,24 +145,14 @@ class CheckoutController extends Controller
                         ->findOrFail($item['id']);
 
                     if ($package->status !== 'Tersedia') {
-                        throw new \Exception(
-                            "Paket {$package->name} sudah tidak tersedia."
-                        );
+                        throw new \RuntimeException("Paket {$package->name} sudah tidak tersedia.");
                     }
 
                     $quantity = (int) $item['quantity'];
 
-                    if ($quantity < 1) {
-                        throw new \Exception(
-                            "Jumlah paket {$package->name} tidak valid."
-                        );
+                    if ($quantity < 1 || $quantity > (int) config('shop.max_quantity', 99)) {
+                        throw new \RuntimeException("Jumlah paket {$package->name} tidak valid.");
                     }
-
-                    /*
-                    |--------------------------------------------------------------------------
-                    | 4. Simpan paket yang dibeli
-                    |--------------------------------------------------------------------------
-                    */
 
                     $subtotal = $package->price * $quantity;
 
@@ -162,39 +166,21 @@ class CheckoutController extends Controller
                         'subtotal' => $subtotal,
                     ]);
 
-                    /*
-                    |--------------------------------------------------------------------------
-                    | 5. Cek & kurangi stok menu berdasarkan isi paket
-                    |--------------------------------------------------------------------------
-                    */
-
                     foreach ($package->details as $detail) {
 
-                        $menu = Menu::lockForUpdate()
-                            ->findOrFail($detail->menus_id);
+                        $menu = Menu::lockForUpdate()->findOrFail($detail->menus_id);
 
-                        $requiredStock =
-                            $detail->quantity * $quantity;
+                        $requiredStock = $detail->quantity * $quantity;
 
                         if ($menu->status !== 'Tersedia') {
-                            throw new \Exception(
-                                "Menu {$menu->name} tidak tersedia."
-                            );
+                            throw new \RuntimeException("Menu {$menu->name} tidak tersedia.");
                         }
 
                         if ($menu->stock < $requiredStock) {
-                            throw new \Exception(
-                                "Stock {$menu->name} tidak mencukupi. " .
-                                "Dibutuhkan {$requiredStock}, " .
-                                "tersedia {$menu->stock}."
+                            throw new \RuntimeException(
+                                "Stok {$menu->name} tidak mencukupi. Dibutuhkan {$requiredStock}, tersedia {$menu->stock}."
                             );
                         }
-
-                        /*
-                        |--------------------------------------------------------------------------
-                        | Simpan penggunaan menu dalam order_details
-                        |--------------------------------------------------------------------------
-                        */
 
                         OrderDetail::create([
                             'order_id' => $order->id,
@@ -205,67 +191,60 @@ class CheckoutController extends Controller
                             'source' => 'package',
                         ]);
 
-                        /*
-                        |--------------------------------------------------------------------------
-                        | Kurangi stok
-                        |--------------------------------------------------------------------------
-                        */
-
-                        $menu->decrement(
-                            'stock',
-                            $requiredStock
-                        );
+                        $menu->decrement('stock', $requiredStock);
                     }
                 }
 
-                /*
-                |--------------------------------------------------------------------------
-                | 6. Simpan total order
-                |--------------------------------------------------------------------------
-                */
-
-                $order->update([
-                    'total' => $total,
-                ]);
+                $order->update(['total' => $total]);
 
                 return $order;
             });
 
-        } catch (\Exception $e) {
+        } catch (ModelNotFoundException $e) {
+
+            Cache::forget($dedupeKey);
 
             return back()
                 ->withInput()
-                ->with(
-                    'error',
-                    $e->getMessage()
-                );
+                ->with('error', 'Salah satu paket di keranjang sudah tidak ada. Perbarui keranjangmu.');
+
+        } catch (\RuntimeException $e) {
+
+            Cache::forget($dedupeKey);
+
+            return back()->withInput()->with('error', $e->getMessage());
+
+        } catch (\Throwable $e) {
+
+            Cache::forget($dedupeKey);
+            report($e);
+
+            return back()
+                ->withInput()
+                ->with('error', 'Pesanan gagal dibuat. Silakan coba lagi beberapa saat.');
         }
 
+        // Pesanan sudah tersimpan. Bagian di bawah di luar try/catch.
+        session()->forget('cart');
 
-            // Pesanan sudah tersimpan. Bagian di bawah sengaja di luar try/catch,
-            // supaya masalah pada redirect tidak dilaporkan sebagai "checkout gagal".
+        app(\App\Services\AdminNotifier::class)->newOrder($order);
 
-             session()->forget('cart');
-
-            app(\App\Services\AdminNotifier::class)->newOrder($order);
-
-            // Ambil sendiri langsung ke halaman pembayaran
-            if($order->delivery_method === 'pickup'){
-                return redirect()->route('customer.payment.create', $order->id)
+        if ($order->delivery_method === 'pickup') {
+            return redirect()->route('customer.payment.create', $order->id)
                 ->with('success', 'Pesanan dibuat. silakan lakukan pembayaran.');
-            }
+        }
 
-            return redirect()->route('customer.order.show', $order->id)
-                ->with('success','Pesanan dibuat. Admin akan mengonfirmasi ongkir, setelah itu anda bisa membayar.');
+        return redirect()->route('customer.orders.show', $order->id)
+            ->with('success', 'Pesanan dibuat. Admin akan mengonfirmasi ongkir, setelah itu anda bisa membayar.');
     }
 
     public function success(Order $order)
     {
-         $account = Auth::guard('customer')->user();
+        $account = Auth::guard('customer')->user();
 
         $customer = $account->customer;
 
-        abort_if(!$customer, 404);
+        abort_if(! $customer, 404);
 
         $order = $customer->orders()
             ->with([
@@ -274,11 +253,8 @@ class CheckoutController extends Controller
                 'details.menu',
                 'payments',
             ])
-        ->findOrFail($order->id);
+            ->findOrFail($order->id);
 
-        return view(
-            'checkout.success',
-            compact('order')
-        );
+        return view('checkout.success', compact('order'));
     }
 }

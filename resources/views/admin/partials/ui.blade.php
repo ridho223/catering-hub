@@ -90,6 +90,14 @@
 
     .adm-content a:focus-visible, .adm-content button:focus-visible { outline:3px solid #7fd1a0; outline-offset:2px; }
 
+    /* Tombol aksi di tabel: semua kotak seragam */
+    .cst-act, .ctg-act, .mnx-act, .pkx-act, .oix-act, .usr-act { align-items:center; }
+    .cst-act > form, .ctg-act > form, .mnx-act > form, .pkx-act > form, .oix-act > form, .usr-act > form { display:flex; margin:0; }
+    .cst-act .btn, .ctg-act .btn, .mnx-act .btn, .pkx-act .btn, .oix-act .btn, .usr-act .btn {
+        min-width:38px; height:38px; padding:0 .55rem;
+        display:inline-flex; align-items:center; justify-content:center;
+    }
+
     @media print {
         .sb, .tb, .adm-overlay, .adm-toast, .no-print { display:none !important; }
         .adm-main { margin:0 !important; }

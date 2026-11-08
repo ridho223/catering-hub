@@ -6,12 +6,13 @@
 @section('content')
 @php
     $kedai = [
-        'name'     => 'Kedai BangJo',
-        'whatsapp' => '6281234567890',
-        'address'  => 'Jl. Kauman I, Turen, Kec. Turen, Kabupaten Malang, Jawa Timur 65175',
+        'name'      => 'Kedai BangJo',
+        'whatsapp'  => '6281944912922',
+        'address'   => 'Jl. Kauman I, Turen, Kec. Turen, Kabupaten Malang, Jawa Timur 65175',
+        'map_query' => 'Catering "Kedai BangJo", Jl. Kauman I, Turen, Malang Regency, East Java 65175',
     ];
     $waUrl   = 'https://wa.me/' . $kedai['whatsapp'] . '?text=' . urlencode('Halo Kedai BangJo, saya mau tanya soal pesanan catering.');
-    $mapsUrl = 'https://www.google.com/maps/search/?api=1&query=' . urlencode($kedai['address']);
+    $mapsUrl = 'https://www.google.com/maps/search/?api=1&query=' . urlencode($kedai['map_query']);
 
     $values = [
         ['bi-basket',        'Bahan segar pilihan', 'Seluruh bahan masakan dipilih segar setiap pagi dari pemasok terpercaya demi kualitas rasa terbaik.'],

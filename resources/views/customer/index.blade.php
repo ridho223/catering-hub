@@ -136,6 +136,7 @@
                                 @if ($wa)
                                     <a href="https://wa.me/{{ $wa }}" target="_blank" rel="noopener noreferrer" class="btn btn-outline-success" title="Chat WhatsApp" aria-label="Chat WhatsApp {{ $customer->name }}"><i class="bi bi-whatsapp"></i></a>
                                 @endif
+                                <a href="{{ route('customers.show', $customer->id) }}" class="btn btn-outline-secondary" title="Detail" aria-label="Detail {{ $customer->name }}"><i class="bi bi-eye"></i></a>
                                 <a href="{{ route('customers.edit', $customer->id) }}" class="btn btn-outline-primary" title="Edit" aria-label="Edit {{ $customer->name }}"><i class="bi bi-pencil"></i></a>
                                 <form action="{{ route('customers.destroy', $customer->id) }}" method="POST"
                                       onsubmit="return confirm('Hapus customer {{ e($customer->name) }}? Tindakan ini tidak bisa dibatalkan.')">

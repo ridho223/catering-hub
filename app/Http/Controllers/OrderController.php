@@ -58,20 +58,30 @@ class OrderController extends Controller
      */
     public function store(Request $request)
     {
+        // Samakan format nomor (0812-3456 / +62812... => 0812...) sebelum divalidasi,
+        // supaya satu orang tidak tercatat dua kali dan nomor tanpa angka ditolak.
+        if ($request->input('customer_mode') === 'new') {
+            $newCustomer = (array) $request->input('new_customer', []);
+            $newCustomer['phone'] = Customer::normalizePhone($newCustomer['phone'] ?? '');
+            $request->merge(['new_customer' => $newCustomer]);
+        }
+
         $validated = $request->validate([
             'customer_mode'        => 'required|in:existing,new',
             'customer_id'          => 'required_if:customer_mode,existing|nullable|exists:customers,id',
             'new_customer.name'    => 'required_if:customer_mode,new|nullable|string|max:255',
-            'new_customer.phone'   => 'required_if:customer_mode,new|nullable|string|max:30',
-            'new_customer.address' => 'nullable|string',
+            'new_customer.phone'   => ['required_if:customer_mode,new', 'nullable', 'string', 'regex:/^0[0-9]{8,14}$/'],
+            'new_customer.address' => 'nullable|string|max:500',
 
             'order_date' => 'required|date',
             'delivery_date' => 'required|date|after_or_equal:order_date',
-            'notes' => 'nullable|string',
+            'notes' => 'nullable|string|max:1000',
 
             'packages' => 'required|array|min:1',
             'packages.*.package_id' => 'required|exists:packages,id',
-            'packages.*.quantity' => 'required|integer|min:1',
+            'packages.*.quantity' => 'required|integer|min:1|max:' . (int) config('shop.max_quantity', 99),
+        ], [
+            'new_customer.phone.regex' => 'Nomor telepon tidak valid. Contoh: 081234567890.',
         ]);
 
         try {
@@ -160,11 +170,9 @@ class OrderController extends Controller
 
 
                 if ($validated['customer_mode'] === 'new') {
-                    // rapikan nomor ("0812 3456-789" => "08123456789") supaya tidak jadi pelanggan ganda
-                    $phone = preg_replace('/[^\d+]/', '', $validated['new_customer']['phone']);
-                
+                    // nomor sudah dinormalisasi & divalidasi di atas
                     $customerId = Customer::firstOrCreate(
-                        ['phone' => $phone],
+                        ['phone' => $validated['new_customer']['phone']],
                         [
                             'name'    => $validated['new_customer']['name'],
                             'address' => $validated['new_customer']['address'] ?? null,
@@ -307,6 +315,15 @@ class OrderController extends Controller
      */
     public function update(Request $request, Order $order)
     {
+        if ($order->status === 'Dibatalkan') {
+            return redirect()->route('orders.show', $order->id)
+                ->with('error', 'Pesanan yang sudah dibatalkan tidak bisa diubah.');
+        }
+
+        // Sudah ada pembayaran (atau Selesai): paket, stok, dan total dikunci supaya tagihan
+        // tidak berubah setelah customer membayar. Tanggal, catatan, dan status masih boleh.
+        $itemsLocked = $order->isLocked();
+
         // Urutan alur: Pending -> Diproses -> Siap Diantar/Diambil -> Selesai
         $flow = ['Pending', 'Diproses', 'Siap_diambil_atau_diantar', 'Selesai'];
     
@@ -320,28 +337,55 @@ class OrderController extends Controller
             ? []
             : array_slice($flow, $currentIdx);   // status sekarang + tahap berikutnya    
     
-        $validated = $request->validate([
+        $rules = [
             'status' => $allowedStatuses
             ? ['required', Rule::in($allowedStatuses)]
             : ['nullable'],
             'order_date' => 'required|date',
             'delivery_date' => 'required|date|after_or_equal:order_date',
-            'notes' => 'nullable|string',
-            'packages' => 'required|array|min:1',
-            'packages.*.package_id' => 'required|exists:packages,id',
-            'packages.*.quantity' => 'required|integer|min:1',
-        ]);
+            'notes' => 'nullable|string|max:1000',
+        ];
+
+        if (! $itemsLocked) {
+            $rules['packages'] = 'required|array|min:1';
+            $rules['packages.*.package_id'] = 'required|exists:packages,id';
+            $rules['packages.*.quantity'] = 'required|integer|min:1|max:' . (int) config('shop.max_quantity', 99);
+        }
+
+        $validated = $request->validate($rules);
 
           $newStatus = $allowedStatuses ? $validated['status'] : $order->status;
           if ($newStatus === 'Selesai' && !$order->isFullyPaid()) {
                 return back()->withInput()->with('error', 'Pesanan belum lunas. Minta customer melunasi atau catat pembayaran tunai dulu.');
             }
 
+        if ($itemsLocked) {
+            DB::transaction(function () use ($validated, $order, $newStatus) {
+                $lockedOrder = Order::whereKey($order->id)->lockForUpdate()->firstOrFail();
+
+                $lockedOrder->update([
+                    'order_date' => $validated['order_date'],
+                    'delivery_date' => $validated['delivery_date'],
+                    'status' => $newStatus,
+                    'notes' => $validated['notes'] ?? null,
+                ]);
+            });
+
+            return redirect()
+                ->route('orders.show', $order->id)
+                ->with('success', 'Pesanan diperbarui. Paket dan total tidak diubah karena pesanan sudah dibayar/selesai.');
+        }
+
         try {
             DB::transaction(function () use ($validated, $order, $newStatus) {
                 $lockedOrder = Order::whereKey($order->id)
                     ->lockForUpdate()
                     ->firstOrFail();
+
+                // Bisa saja customer baru saja membayar saat form ini dibuka.
+                if ($lockedOrder->isLocked()) {
+                    throw new \RuntimeException('Pesanan ini baru saja dibayar/diselesaikan, jadi paketnya tidak bisa diubah lagi. Muat ulang halaman.');
+                }
 
                 // Kembalikan stok dari detail pesanan sebelumnya.
                 $oldDetails = OrderDetail::where(
@@ -507,31 +551,80 @@ class OrderController extends Controller
      */
     public function destroy(Order $order)
     {
-        DB::transaction(function () use ($order){
-            foreach ($order->details as $detail){
-                $menu = Menu::find($detail->menu_id);
+        $proofs = [];
 
-                if($menu){
-                    $menu->increment('stock', $detail->quantity);
+        try {
+            DB::transaction(function () use ($order, &$proofs) {
+                $locked = Order::whereKey($order->id)->lockForUpdate()->firstOrFail();
+
+                if (! in_array($locked->status, ['Pending', 'Dibatalkan'], true) || $locked->hasActivePayment()) {
+                    throw new \RuntimeException(
+                        'Pesanan yang sudah dibayar/diproses tidak bisa dihapus karena menjadi riwayat transaksi dan laporan. '
+                        . 'Pesanan Pending yang belum dibayar bisa dibatalkan.'
+                    );
                 }
-            }
 
-            $order->details()->delete();
+                // Stok hanya dikembalikan jika pesanan belum dibatalkan (kalau sudah, stok sudah kembali).
+                if ($locked->status === 'Pending') {
+                    foreach (OrderDetail::where('order_id', $locked->id)->get() as $detail) {
+                        $menu = Menu::whereKey($detail->menu_id)->lockForUpdate()->first();
 
-            $order->delete();
+                        if ($menu) {
+                            $menu->increment('stock', $detail->quantity);
+                        }
+                    }
+                }
 
-        });
+                $proofs = Payment::where('order_id', $locked->id)->whereNotNull('proof')->pluck('proof')->all();
 
-        return redirect()->route('orders.index')->with('success','Pesanan berhasil dihapus dan stok dikembalikan');
+                $locked->details()->delete();
+                $locked->delete();
+            });
+        } catch (\RuntimeException $e) {
+            return redirect()->route('orders.show', $order->id)->with('error', $e->getMessage());
+        }
+
+        // Bersihkan file bukti bayar (ditolak) milik pesanan yang dihapus.
+        foreach ($proofs as $proof) {
+            Storage::disk('local')->delete($proof);
+            Storage::disk('public')->delete($proof);
+        }
+
+        return redirect()->route('orders.index')->with('success', 'Pesanan berhasil dihapus dan stok dikembalikan');
+    }
+
+    // Batalkan pesanan Pending yang belum ada pembayaran; stok menu dikembalikan.
+    public function cancel(Order $order)
+    {
+        if ($order->status !== 'Pending') {
+            return back()->with('error', 'Hanya pesanan berstatus Pending yang bisa dibatalkan.');
+        }
+
+        if ($order->hasActivePayment()) {
+            return back()->with('error', 'Pesanan ini sudah ada pembayaran (dibayar/menunggu verifikasi), jadi tidak bisa dibatalkan. Proses pembayarannya dulu.');
+        }
+
+        if (! $order->cancelAndRestock()) {
+            return back()->with('error', 'Pesanan ini sudah tidak bisa dibatalkan.');
+        }
+
+        return back()->with('success', 'Pesanan dibatalkan dan stok menu dikembalikan.');
     }
 
 
     public function updateShipping(Request $request, Order $order)
     {
+        if ($order->isLocked()) {
+            return back()->with('error', 'Pengiriman tidak bisa diubah karena pesanan sudah dibayar, selesai, atau dibatalkan.');
+        }
+
         $validated = $request->validate([
             'delivery_method' => 'required|in:pickup,delivery',
-            'delivery_distance' => 'nullable|numeric|min:0',
+            // jarak wajib untuk delivery: kalau kosong, pembayaran tidak boleh terbuka dengan ongkir Rp0
+            'delivery_distance' => 'required_if:delivery_method,delivery|nullable|numeric|min:0',
             'delivery_fee' => 'nullable|numeric|min:0',
+        ], [
+            'delivery_distance.required_if' => 'Jarak pengiriman wajib diisi (isi 0 jika memang dekat/gratis).',
         ]);
 
         $method = $validated['delivery_method'];
@@ -570,6 +663,10 @@ class OrderController extends Controller
             $lockedOrder = Order::whereKey($order->id)
                 ->lockForUpdate()
                 ->firstOrFail();
+
+            if ($lockedOrder->isLocked()) {
+                abort(409, 'Pesanan sudah dibayar/selesai, pengiriman tidak bisa diubah.');
+            }
 
             // Paket sudah memiliki subtotal sendiri.
             $subtotalPaket = OrderPackage::where('order_id', $lockedOrder->id)
